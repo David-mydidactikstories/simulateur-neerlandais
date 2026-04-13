@@ -151,7 +151,7 @@ wss.on('connection', (ws) => {
         isConnecting = true;
 
         // smart_format désactivé — causait "ja hallo" → "jaro"
-        const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=nl&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=false&utterance_end_ms=2500&vad_events=true&keepalive=true&numerals=true`;
+        const deepgramUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&language=nl&interim_results=true&encoding=linear16&sample_rate=16000&endpointing=false&utterance_end_ms=3500&vad_events=true&keepalive=true&numerals=true`;
         dgConnection = new WebSocket(deepgramUrl, { headers: { Authorization: `Token ${dgKey}` } });
 
         dgConnection.on('open', () => {
@@ -178,7 +178,7 @@ wss.on('connection', (ws) => {
                     const fullSentence = corrigerTranscription(raw);
                     if (fullSentence.length > 3 && fullSentence !== dernierEnvoi) {
                         dernierEnvoi = fullSentence;
-                        console.log(`🗣️ David (NL) : "${fullSentence}"`);
+                        console.log(`🗣️ ${currentConfig.userName || 'Conseiller'} (NL) : "${fullSentence}"`);
                         safeSend({ type: 'text', value: fullSentence });
                         transcriptBuffer = "";
                         await evaluerQuestion(fullSentence);
@@ -202,7 +202,9 @@ wss.on('connection', (ws) => {
         if (!geminiKey) return;
         isIAThinking = true;
         safeSend({ type: 'ia_thinking' });
-        historique.push(`David: "${questionDavid}"`);
+        const nomConseiller   = currentConfig.userName || 'le conseiller';
+        const titreConseiller = currentConfig.userGender === 'F' ? 'mevrouw' : 'meneer';
+        historique.push(`${nomConseiller}: "${questionDavid}"`);
 
         const champsActifs   = champsRequis;
         const champsRestants = champsActifs.filter(c => !champsRemplis.includes(c.id));
@@ -220,9 +222,12 @@ NE demande plus aucune information. NE mentionne plus aucun champ. Juste un au r
 
         const systemPrompt = `
 Tu joues le rôle de ${currentConfig.nom}, ${currentConfig.role}.
-Tu as introduit une demande de crédit chez Cofidis Belgique. Un conseiller (David) te rappelle car il manque des informations à ton dossier.
+Tu as introduit une demande de crédit chez Cofidis Belgique. Un(e) conseiller(ère) Cofidis (${nomConseiller}) te rappelle car il manque des informations à ton dossier.
 
 ⭐ RÈGLE FONDAMENTALE : Tu es un CLIENT COOPÉRATIF. C'est dans ton propre intérêt de compléter ce dossier pour obtenir ton crédit. Tu réponds TOUJOURS à toutes les questions posées, sans jamais refuser ni esquiver. Même si une question porte sur ton revenu, ton adresse, ta situation familiale ou tout autre sujet personnel — tu y réponds obligatoirement. Ne dis jamais "dat gaat u niet aan", "dat wil ik niet zeggen", ou toute autre formule de refus.
+
+⚠️ RÈGLE ABSOLUE — TU ES LE CLIENT, PAS LE CONSEILLER :
+Tu ne poses JAMAIS de questions sur le dossier, les documents à fournir, le montant du crédit, les conditions, les procédures Cofidis ou quoi que ce soit lié au crédit. Tu réponds UNIQUEMENT à ce que le conseiller te demande. Si tu es tenté(e) de poser une question sur le dossier ou le crédit, remplace-la par une courte réaction neutre ("Oké.", "Ik begrijp het.", "Goed.") et attends la prochaine question.
 
 PROFIL : ${currentConfig.prompt}
 SITUATION PRO : ${beroepInstructie}
@@ -231,8 +236,8 @@ CHAMPS DÉJÀ COLLECTÉS : ${champsRemplis.length > 0 ? champsRemplis.join(', ')
 CHAMPS ENCORE NÉCESSAIRES : ${champsRestants.map(c => `${c.id} (${c.fr})`).join(', ') || 'dossier complet !'}
 
 RÈGLES STRICTES :
-0. Tu es le CLIENT. David est le conseiller Cofidis qui t'appelle. Tu l'appelles UNIQUEMENT "u" ou "meneer" — jamais par un nom de famille. Tu ne connais pas le nom de famille du conseiller et tu ne le devines JAMAIS. N'utilise surtout pas TON propre nom de famille pour appeler le conseiller (ex: si tu t'appelles Janssen, ne dis JAMAIS "meneer Janssen" en parlant au conseiller).
-   Si David confirme ton identité en début d'appel ("Spreek ik met meneer/mevrouw [ton nom]?") et que tu confirmes : marque 'naam' comme champ_rempli. Pas besoin du prénom.
+0. Tu es le CLIENT. ${nomConseiller} est le/la conseiller(ère) Cofidis qui t'appelle. Tu l'appelles UNIQUEMENT "u" ou "${titreConseiller}" — jamais par son nom de famille. Tu ne connais pas le nom de famille du/de la conseiller(ère) et tu ne le devines JAMAIS. N'utilise surtout pas TON propre nom de famille pour appeler le/la conseiller(ère) (ex: si tu t'appelles Janssen, ne dis JAMAIS "meneer Janssen" ou "mevrouw Janssen" en parlant au/à la conseiller(ère)).
+   Si ${nomConseiller} confirme ton identité en début d'appel ("Spreek ik met meneer/mevrouw [ton nom]?") et que tu confirmes : marque 'naam' comme champ_rempli. Pas besoin du prénom.
    ⚠️ UNE FOIS QUE TU T'ES IDENTIFIÉ(E), ne répète plus jamais de phrase d'identification ("aan de lijn", "dit is mevrouw X", etc.). Réponds directement à la question posée, comme dans une vraie conversation téléphonique.
 1. Ne répète JAMAIS spontanément une information déjà dans "CHAMPS DÉJÀ COLLECTÉS".
 2. Ne confonds PAS les champs : si David demande la carte d'identité, ne redonne PAS ton rijksregisternummer.
@@ -250,8 +255,8 @@ RÈGLES STRICTES :
 8. Pour bewijs_inkomen : indique quel document tu peux envoyer (loonstrook, bankafschrift, aanslagbiljet...) et demande l'adresse e-mail si elle n'est pas encore dans l'historique.
 9. Pour "kinderen_ten_laste" : ce champ nécessite DEUX informations — (1) le nombre d'enfants à charge ET (2) le montant mensuel de la kinderbijslag. Ne marque "kinderen_ten_laste" comme champ_rempli que lorsque David a obtenu ces deux informations. Si David demande le montant de la kinderbijslag et que tu as déjà donné le nombre d'enfants, donne le montant directement — ne répète PAS le nombre d'enfants.
 9b. Varie toujours les détails (montants, dates précises) d'un appel à l'autre.
-10. Ta réponse ("reponse") est TOUJOURS en néerlandais, même si David parle en français.
-11. "correction" est en FRANÇAIS pour aider David, null si son néerlandais est correct.
+10. Ta réponse ("reponse") est TOUJOURS en néerlandais, même si ${nomConseiller} parle en français.
+11. "correction" est en FRANÇAIS pour aider ${nomConseiller}, null si son néerlandais est correct.
 12. Ne juge pas la prononciation de mots propres/français comme "Cofidis" — c'est hors sujet.
 ${goodbyeInstructie}
 
@@ -341,15 +346,18 @@ RÉPONDS EN JSON :
 
     // ---- DÉBRIEF (sans "Coach Mady") ----
     const declencherDebrief = async () => {
+        const nomConseiller = currentConfig.userName || 'le conseiller';
+        const pronom = currentConfig.userGender === 'F' ? 'elle' : 'il';
+        const pronominalisationQ = currentConfig.userGender === 'F' ? 'ses' : 'ses';
         const promptDebrief = `Tu es un coach spécialiste en apprentissage du néerlandais professionnel.
 LANGUE DE RÉPONSE : FRANÇAIS UNIQUEMENT. Toutes les valeurs JSON doivent être rédigées en français.
-Tutoie David. Analyse ses questions en néerlandais dans ce contexte d'appel sortant Cofidis.
+Tutoie ${nomConseiller}. Analyse ses questions en néerlandais dans ce contexte d'appel sortant Cofidis.
 IMPORTANT : ne commente PAS la prononciation de mots propres français comme "Cofidis".
 
 RÉPONDS UNIQUEMENT EN JSON, toutes les valeurs en français :
 {
-  "diagnostic": "bilan général du niveau de néerlandais de David en 2-3 phrases",
-  "point_fort": "ce qu'il a bien formulé en néerlandais",
+  "diagnostic": "bilan général du niveau de néerlandais de ${nomConseiller} en 2-3 phrases",
+  "point_fort": "ce qu'${pronom} a bien formulé en néerlandais",
   "a_corriger": "erreurs de néerlandais à travailler (pas les mots FR/noms propres)",
   "phrase_modele": "un exemple de question bien formulée en néerlandais pour ce contexte crédit"
 }

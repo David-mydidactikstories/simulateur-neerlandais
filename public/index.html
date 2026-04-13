@@ -53,6 +53,38 @@
 </head>
 <body class="p-4 md:p-8">
 
+<!-- ═══ MODAL ACCUEIL — Prénom + Genre ═══ -->
+<div id="modal-welcome" class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl border-t-8 border-t-blue-500 text-center">
+        <div class="text-4xl mb-3">🇧🇪</div>
+        <h2 class="text-xl font-black text-slate-900 mb-1 tracking-tight">MDS Dutch Simulator</h2>
+        <p class="text-xs text-slate-400 mb-6">Avant de commencer, identifie-toi</p>
+        <div class="text-left mb-4">
+            <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Ton prénom</label>
+            <input id="input-username" type="text" placeholder="ex: David, Dominique…"
+                class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-blue-400 transition-colors"
+                onkeydown="if(event.key==='Enter') validerAccueil()">
+        </div>
+        <div class="text-left mb-7">
+            <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Tu es…</label>
+            <div class="flex gap-3">
+                <button id="btn-genre-m" onclick="selectGender('M')"
+                    class="flex-1 py-3 rounded-xl border-2 border-slate-200 text-sm font-black text-slate-600 hover:border-blue-400 transition-all">
+                    👨 Monsieur
+                </button>
+                <button id="btn-genre-f" onclick="selectGender('F')"
+                    class="flex-1 py-3 rounded-xl border-2 border-slate-200 text-sm font-black text-slate-600 hover:border-pink-400 transition-all">
+                    👩 Madame
+                </button>
+            </div>
+        </div>
+        <button onclick="validerAccueil()"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition-colors">
+            Commencer la simulation →
+        </button>
+    </div>
+</div>
+
 <header class="max-w-6xl mx-auto w-full flex justify-between items-center mb-6">
     <div class="flex items-center gap-3">
         <span class="text-2xl">🇧🇪</span>
@@ -205,7 +237,7 @@
 <div id="modal-debrief" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
     <div class="bg-white rounded-[2rem] w-full max-w-lg p-8 shadow-2xl border-t-8 border-t-blue-500 text-center">
         <div class="text-5xl mb-4">🎓</div>
-        <h2 class="text-xl font-black text-slate-900 mb-2 tracking-tight">Dossier Complété !</h2>
+        <h2 id="debrief-title" class="text-xl font-black text-slate-900 mb-2 tracking-tight">Dossier Complété !</h2>
         <p class="text-xs text-slate-400 mb-4">Feedback sur ton néerlandais</p>
         <div id="debrief-body" class="text-left bg-slate-50 p-5 rounded-xl text-xs leading-relaxed text-slate-600 space-y-3 mb-6"></div>
         <button onclick="location.reload()" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 transition-colors">Recommencer</button>
@@ -359,6 +391,33 @@
     ];
 
     // ==========================================
+    // ACCUEIL — Prénom + Genre
+    // ==========================================
+    let userName   = '';
+    let userGender = 'M';
+
+    function selectGender(g) {
+        userGender = g;
+        const btnM = document.getElementById('btn-genre-m');
+        const btnF = document.getElementById('btn-genre-f');
+        btnM.className = 'flex-1 py-3 rounded-xl border-2 text-sm font-black transition-all ' +
+            (g === 'M' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-blue-400');
+        btnF.className = 'flex-1 py-3 rounded-xl border-2 text-sm font-black transition-all ' +
+            (g === 'F' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-slate-200 text-slate-600 hover:border-pink-400');
+    }
+
+    function validerAccueil() {
+        const nameInput = document.getElementById('input-username').value.trim();
+        if (!nameInput) {
+            document.getElementById('input-username').focus();
+            document.getElementById('input-username').classList.add('border-red-400');
+            return;
+        }
+        userName = nameInput;
+        document.getElementById('modal-welcome').classList.add('hidden');
+    }
+
+    // ==========================================
     // VARIABLES D'ÉTAT
     // ==========================================
     let current = PROFILES[0];
@@ -403,8 +462,9 @@
         chatLog.forEach(item => {
             const div = document.createElement('div');
             if (item.role === 'david') {
+                const initiale = userName ? userName[0].toUpperCase() : 'D';
                 div.className = 'flex items-start gap-1.5';
-                div.innerHTML = `<span class="text-[8px] font-black text-slate-400 shrink-0 mt-0.5 w-3">D</span><span class="text-[10px] text-slate-700 bg-slate-100 rounded-xl px-2 py-1 leading-snug">${item.text}</span>`;
+                div.innerHTML = `<span class="text-[8px] font-black text-slate-400 shrink-0 mt-0.5 w-3">${initiale}</span><span class="text-[10px] text-slate-700 bg-slate-100 rounded-xl px-2 py-1 leading-snug">${item.text}</span>`;
             } else {
                 div.className = 'flex items-start gap-1.5 justify-end';
                 div.innerHTML = `<span class="text-[10px] text-blue-800 bg-blue-50 rounded-xl px-2 py-1 leading-snug">${item.text}</span><span class="text-[8px] font-black text-blue-400 shrink-0 mt-0.5 w-3">C</span>`;
@@ -509,7 +569,7 @@
             ws = new WebSocket(`${protocol}://${window.location.host}`);
 
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'config', ...current, sampleRate: audioCtx.sampleRate }));
+                ws.send(JSON.stringify({ type: 'config', ...current, sampleRate: audioCtx.sampleRate, userName, userGender }));
                 document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 animate-pulse";
                 document.getElementById('status-text').innerText = "En ligne";
                 document.getElementById('state-msg').innerText = "Appel en cours…";
@@ -631,6 +691,7 @@
 
     function showGameOverModal(data) {
         playVictorySound();
+        if (userName) document.getElementById('debrief-title').innerText = `Bravo ${userName} !`;
         document.getElementById('modal-debrief').classList.replace('hidden', 'flex');
         if (data.debrief) {
             document.getElementById('debrief-body').innerHTML = `
