@@ -1,0 +1,13 @@
+# Variables d'environnement — JAMAIS pushées
+.env
+
+# Dépendances Node
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

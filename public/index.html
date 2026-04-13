@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDS Dutch Simulator | Crédit Cofidis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0f4ff;
+            font-family: 'Outfit', sans-serif;
+            overflow-x: hidden;
+            background-image: radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.07) 0%, transparent 50%);
+        }
+        .font-headline { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        .wave-bar { width: 4px; margin: 0 2px; background-color: #e2e8f0; border-radius: 99px; height: 6px; transition: all 0.2s; }
+        .speaking .wave-bar { animation: wave 0.6s infinite alternate; background-color: #3b82f6; }
+        @keyframes wave { 0% { height: 6px; } 100% { height: 40px; } }
+
+        .live-transcription-glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 2px dashed #cbd5e1;
+            transition: border-color 0.3s ease;
+        }
+        .live-transcription-glass.active {
+            border-color: #3b82f6;
+            background: rgba(239, 246, 255, 0.85);
+        }
+
+        .champ-item { transition: all 0.4s ease; border-radius: 0.6rem; padding: 6px 8px; }
+        .champ-item.done  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+        .champ-item.done .champ-dot   { background-color: #22c55e; width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .champ-item.done .champ-check { display: block; }
+        .champ-item.done .champ-label { color: #15803d; font-weight: 900; font-size: 13px; }
+        .champ-item.done .champ-fr    { color: #86efac; }
+        .champ-item.pending { border: 1px solid transparent; }
+        .champ-item.pending .champ-dot   { background-color: #e2e8f0; width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; }
+        .champ-item.pending .champ-check { display: none; }
+        .champ-item.pending .champ-label { color: #64748b; font-size: 13px; }
+        .champ-item.pending .champ-fr    { color: #cbd5e1; }
+
+        .correction-bubble { animation: slideIn 0.3s ease; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+<header class="max-w-6xl mx-auto w-full flex justify-between items-center mb-6">
+    <div class="flex items-center gap-3">
+        <span class="text-2xl">🇧🇪</span>
+        <h1 class="text-xl font-black text-slate-900 tracking-tight font-headline">
+            MDS Dutch Simulator
+            <span class="text-blue-500 uppercase text-xs">Crédit Cofidis</span>
+        </h1>
+    </div>
+    <div class="flex items-center gap-2">
+        <a href="/guide_pratique.pdf" target="_blank"
+           class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm transition-colors">
+            <i data-lucide="book-open" class="w-3 h-3"></i>
+            Guide
+        </a>
+        <div class="flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-slate-200 text-[9px] font-black uppercase text-slate-500 shadow-sm">
+            <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-300"></div>
+            <span id="status-text">Hors-ligne</span>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- ═══ COLONNE GAUCHE : Profil client ═══ -->
+    <div class="lg:col-span-3">
+        <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm flex flex-col items-center">
+            <img id="ui-avatar" src="" class="w-20 h-20 rounded-full border-4 border-slate-50 shadow-md mb-3 object-cover">
+            <h2 id="ui-name" class="text-base font-bold text-slate-900">...</h2>
+            <p id="ui-role" class="text-[9px] font-black text-blue-500 uppercase mb-4 tracking-widest">...</p>
+
+            <div class="w-full space-y-2 mb-4">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-inner">
+                    <p class="text-[8px] font-black text-slate-400 uppercase mb-2 tracking-widest">Profil Client</p>
+                    <ul class="text-[11px] space-y-1.5 font-semibold text-slate-600">
+                        <li class="flex items-center gap-2"><i data-lucide="user" class="w-3 h-3 text-slate-400"></i> <span id="ui-age">...</span> · <span id="ui-situation">...</span></li>
+                        <li class="flex items-center gap-2"><i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> <span id="ui-ville">...</span></li>
+                        <li class="flex items-center gap-2"><i data-lucide="briefcase" class="w-3 h-3 text-slate-400"></i> <span id="ui-beroep">...</span></li>
+                    </ul>
+                </div>
+                <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 shadow-inner">
+                    <p class="text-[8px] font-black text-blue-500 uppercase mb-1 tracking-widest">Comportement</p>
+                    <p id="ui-desc" class="text-[11px] text-slate-600 italic leading-snug">...</p>
+                </div>
+            </div>
+
+            <select id="level-selector" class="w-full text-[11px] p-2.5 rounded-xl bg-white border border-slate-200 font-bold outline-none shadow-sm mb-3"></select>
+
+            <!-- Script d'ouverture -->
+            <div class="w-full bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                <p class="text-[8px] font-black text-emerald-600 uppercase mb-1.5 tracking-widest">📞 Ouverture de l'appel</p>
+                <p class="text-[10px] text-slate-600 leading-relaxed italic">"Goedemorgen, met [votre nom] van Cofidis België. Ik bel in verband met uw kredietaanvraag. Heeft u even tijd?"</p>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══ COLONNE CENTRE : Interface d'appel ═══ -->
+    <div class="lg:col-span-5">
+        <div class="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-xl flex flex-col items-center relative overflow-hidden">
+
+            <div id="visualizer" class="flex items-center h-12 mb-4">
+                <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+                <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            </div>
+
+            <div id="state-msg" class="text-slate-400 text-xs font-bold mb-4 h-4 uppercase tracking-tighter">Prêt à appeler</div>
+
+            <button id="btn-call" class="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-2xl border-8 border-slate-50 hover:scale-105 active:scale-95 transition-all mb-6">
+                <i data-lucide="phone-outgoing" class="w-10 h-10 text-green-500" id="call-icon"></i>
+            </button>
+
+            <!-- Zone transcription live -->
+            <div id="live-container" class="w-full live-transcription-glass rounded-2xl p-4 mb-4 min-h-[72px] flex flex-col justify-center relative overflow-hidden">
+                <p class="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">Vous dites (NL) :</p>
+                <p id="live-speech" class="text-sm font-semibold text-slate-400 italic leading-relaxed">En attente de votre voix...</p>
+            </div>
+
+            <!-- Zone réponse client -->
+            <div class="w-full bg-slate-50 rounded-2xl p-4 min-h-[64px] border border-slate-100">
+                <p class="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Client répond (NL) :</p>
+                <p id="client-response" class="text-sm font-semibold text-slate-700 italic leading-relaxed">—</p>
+            </div>
+
+            <!-- Historique des 4 derniers échanges -->
+            <div id="chat-history" class="hidden w-full mt-3">
+                <p class="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1.5">4 derniers échanges</p>
+                <div id="chat-log" class="space-y-1.5 max-h-40 overflow-y-auto hide-scrollbar"></div>
+            </div>
+
+            <!-- Bulle de correction -->
+            <div id="correction-zone" class="hidden w-full mt-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 correction-bubble">
+                <p class="text-[8px] font-black text-amber-500 uppercase tracking-widest mb-1">💡 Correction :</p>
+                <p id="correction-text" class="text-xs text-amber-800 leading-relaxed font-semibold"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ COLONNE DROITE : Checklist + Aide ═══ -->
+    <div class="lg:col-span-4 flex flex-col gap-4">
+
+        <!-- Barre de progression -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <div class="flex justify-between items-center mb-2">
+                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dossier complété</p>
+                <span id="score-txt" class="text-[10px] font-black text-blue-500">0 / 6</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div id="jauge" class="bg-gradient-to-r from-blue-400 to-green-400 h-full transition-all duration-1000" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Checklist dynamique (construite après fields_selected) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <span class="text-[8px] font-black uppercase tracking-widest text-slate-400">Informations à collecter</span>
+                <i data-lucide="clipboard-list" class="w-3 h-3 text-slate-300"></i>
+            </div>
+            <div id="checklist" class="p-4 space-y-2">
+                <p class="text-[10px] text-slate-300 italic">Lancez l'appel pour voir les champs…</p>
+            </div>
+        </div>
+
+        <!-- Boîte suggestion contextuelle -->
+        <div id="hint-box" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">💬</span>
+                    <span class="text-[8px] font-black uppercase tracking-widest text-slate-400">Si tu es bloqué(e)...</span>
+                </div>
+                <button onclick="toggleHint()" id="hint-toggle-btn" class="text-[8px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">Masquer</button>
+            </div>
+            <div id="hint-body" class="px-4 py-3 space-y-1.5">
+                <p id="hint-trans" class="hidden text-[10px] text-slate-400 italic leading-snug"></p>
+                <p id="hint-phrase" class="text-sm font-black text-blue-700 leading-snug bg-blue-50 rounded-xl px-3 py-2.5"></p>
+                <p id="hint-fr" class="text-[9px] text-slate-400 italic pl-1"></p>
+            </div>
+        </div>
+
+        <!-- Bouton guide PDF -->
+        <a href="/guide_pratique.pdf" target="_blank"
+           class="flex items-center justify-center gap-2 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-500 py-2.5 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-sm transition-colors">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+            Guide complet
+        </a>
+    </div>
+</main>
+
+
+<!-- ═══ MODAL DÉBRIEF ═══ -->
+<div id="modal-debrief" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-[2rem] w-full max-w-lg p-8 shadow-2xl border-t-8 border-t-blue-500 text-center">
+        <div class="text-5xl mb-4">🎓</div>
+        <h2 class="text-xl font-black text-slate-900 mb-2 tracking-tight">Dossier Complété !</h2>
+        <p class="text-xs text-slate-400 mb-4">Feedback sur ton néerlandais</p>
+        <div id="debrief-body" class="text-left bg-slate-50 p-5 rounded-xl text-xs leading-relaxed text-slate-600 space-y-3 mb-6"></div>
+        <button onclick="location.reload()" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 transition-colors">Recommencer</button>
+    </div>
+</div>
+
+<script>
+    lucide.createIcons();
+
+    // ==========================================
+    // AIDE PAR CHAMP (affichée après fields_selected)
+    // ==========================================
+    const AIDE = {
+        naam:                { label: 'Naam + voornaam',       phrases: ['"Kunt u mij uw naam en voornaam geven?"', '"Hoe is uw naam?"'] },
+        adres:               { label: 'Adres',                 phrases: ['"Wat is uw woonadres?"', '"Kunt u uw adres geven?"'] },
+        geboortedatum:       { label: 'Geboortedatum',         phrases: ['"Wat is uw geboortedatum?"'] },
+        rijksregisternummer: { label: 'Rijksregisternummer',   phrases: ['"Kunt u mij uw rijksregisternummer geven?"', '"Mag ik uw rijksregisternummer?"'] },
+        identiteitskaart:    { label: 'Identiteitskaart',      phrases: ['"Kunt u een kopie, recto verso, van uw identiteitskaart opsturen?"'] },
+        kredietbedrag:       { label: 'Kredietbedrag',         phrases: ['"Hoeveel wilt u lenen?"', '"Wat is het gewenste kredietbedrag?"'] },
+        beroep_type:         { label: 'Beroepssituatie',            phrases: ['"Wat is uw beroepssituatie?"', '"Bent u bediende, arbeider, gepensioneerd...?"'] },
+        maandinkomen:        { label: 'Maandelijks inkomen',        phrases: ['"Hoeveel bedraagt uw netto maandinkomen?"', '"Wat is uw maandsalaris / pensioen / uitkering?"'] },
+        bewijs_inkomen:      { label: 'Bewijsdocument',             phrases: ['"Kunt u [uw laatste loonstrook / een bankafschrift / het aanslagbiljet] opsturen?"', '"Naar welk e-mailadres kan ik dat sturen?"'] },
+        kredietdoel:         { label: 'Doel van het krediet',  phrases: ['"Waarvoor is het krediet bedoeld?"', '"Wat is het doel van uw krediet?"'] },
+        burgerlijke_staat:   { label: 'Burgerlijke staat',     phrases: ['"Wat is uw burgerlijke staat?"'] },
+        kinderen_ten_laste:  { label: 'Kinderen ten laste',    phrases: ['"Hoeveel kinderen heeft u ten laste?"', '"Wat is het bedrag van de kinderbijslag?"'] },
+    };
+
+    // ==========================================
+    // PROFILS CLIENTS (10 niveaux)
+    // ==========================================
+    const SIT = {
+        gepensioneerd: "Tu es gepensioneerd. Pour beroep_type : réponds 'gepensioneerd'. Pour maandinkomen : donne ta pension nette mensuelle (varie entre 1150-1650€). Pour bewijs_inkomen : accepte d'envoyer un bankafschrift avec le dernier versement de ta pension.",
+        bediende: (salaire) => `Tu es bediende. Pour beroep_type : réponds 'bediende'. Pour maandinkomen : donne ton salaire net mensuel (varie entre ${salaire}). Pour bewijs_inkomen : accepte d'envoyer ta dernière loonstrook (fiche de salaire).`,
+        arbeider: "Tu es arbeider. Pour beroep_type : réponds 'arbeider'. Pour maandinkomen : donne ton salaire net mensuel (varie entre 1700-2100€). Pour bewijs_inkomen : accepte d'envoyer ta dernière loonstrook.",
+        werkloze: "Tu es werkloos. Pour beroep_type : réponds 'werkloze'. Pour maandinkomen : donne ton allocation de chômage mensuelle (varie entre 900-1300€). Pour bewijs_inkomen : accepte d'envoyer un bankafschrift nominatif avec le dernier virement de tes allocations.",
+        invalide: "Tu es arbeidsongeschikt. Pour beroep_type : réponds 'arbeidsongeschikt'. Pour maandinkomen : donne ton allocation d'invalidité mensuelle (varie entre 1000-1400€). Pour bewijs_inkomen : accepte d'envoyer un bankafschrift nominatif avec le dernier versement.",
+        zelfstandige: "Tu es zelfstandige. Pour beroep_type : réponds 'zelfstandige'. Pour maandinkomen : tu peux indiquer un revenu approximatif (varie entre 1800-3500€). Pour bewijs_inkomen : accepte d'envoyer l'aanslagbiljet (avertissement extrait de rôle) de la dernière année fiscale.",
+    };
+
+    const PROFILES = [
+        {
+            niveau: 1, nom: 'Meneer Janssen', role: 'Gepensioneerde · Gent',
+            age: '67 ans', situation: 'Marié', ville: 'Gent', beroep: 'Gepensioneerd',
+            voiceId: 'wqDY19Brqhu7UCoLadPh',
+            voiceSettings: { stability: 0.35, similarity_boost: 0.90, style: 0.25, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=JJ&background=dbeafe&color=1d4ed8',
+            desc: "Très lent et clair. Prononciation standard. Idéal pour débuter.",
+            champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+            prompt: "Meneer Janssen, 67 ans, gepensioneerd à Gent. Marié. Demande de crédit voiture chez Cofidis. Parle très lentement et clairement, prononciation standard belge. Très coopératif.",
+            situationProInstructie: SIT.gepensioneerd,
+        },
+        {
+            niveau: 2, nom: 'Mevrouw De Smedt', role: 'Verpleegkundige · Leuven',
+            age: '34 ans', situation: 'Célibataire', ville: 'Leuven', beroep: 'Verpleegkundige',
+            voiceId: 'gC9jy9VUxaXAswovchvQ',
+            voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=MD&background=dcfce7&color=166534',
+            desc: "Vitesse normale. Sympa, pose parfois une petite question.",
+            champsIds: ['naam','adres','geboortedatum','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Mevrouw De Smedt, 34 ans, verpleegkundige (bediende) à Leuven. Célibataire. Demande de crédit chez Cofidis. Parle à vitesse normale, pronunciation claire. Coopérative, peut poser une question ponctuelle.",
+            situationProInstructie: SIT.bediende('1900-2350€'),
+        },
+        {
+            niveau: 3, nom: 'Meneer Maes', role: 'Bediende · Brussel',
+            age: '43 ans', situation: 'Marié, 2 enfants', ville: 'Brussel', beroep: 'Bediende',
+            voiceId: 'ruSJRhA64v8HAqiqKXVw',
+            voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=TM&background=e0e7ff&color=3730a3',
+            desc: "Vitesse normale, léger accent bruxellois. Coopératif.",
+            champsIds: ['naam','adres','burgerlijke_staat','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Meneer Maes, 43 ans, bediende à Brussel. Marié, 2 enfants. Demande de crédit renovation chez Cofidis. Parle à vitesse normale avec un léger accent bruxellois. Coopératif.",
+            situationProInstructie: SIT.bediende('2100-2600€'),
+        },
+        {
+            niveau: 4, nom: 'Mevrouw Claes', role: 'Zelfstandige · Hasselt',
+            age: '48 ans', situation: 'Mariée', ville: 'Hasselt', beroep: 'Zelfstandige',
+            voiceId: 'HAAKLJlaJeGl18MKHYeg',
+            voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=IC&background=fef3c7&color=92400e',
+            desc: "Parle assez vite. Accent limbourgeois léger. Hésitante sur certains chiffres.",
+            champsIds: ['naam','adres','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+            prompt: "Mevrouw Claes, 48 ans, zelfstandige (commerce) à Hasselt. Mariée. Demande de crédit chez Cofidis. Parle assez vite avec un accent limbourgeois léger. Hésitante sur les chiffres (revenu variable), mais coopérative.",
+            situationProInstructie: SIT.zelfstandige,
+        },
+        {
+            niveau: 5, nom: 'Meneer Pieters', role: 'Arbeider · Antwerpen',
+            age: '38 ans', situation: 'Marié, 3 enfants', ville: 'Antwerpen', beroep: 'Arbeider',
+            voiceId: 'WLKp2jV6nrS8aMkPPDRO',
+            voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.25, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=KP&background=fee2e2&color=991b1b',
+            desc: "Accent anversois. Parle vite par moments. Direct et bref dans ses réponses.",
+            champsIds: ['naam','adres','geboortedatum','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Meneer Pieters, 38 ans, arbeider à Anvers. Marié, 3 enfants. Demande de crédit chez Cofidis. Parle avec un accent anversois prononcé, assez vite, réponses directes et courtes. Coopératif mais pas bavard.",
+            situationProInstructie: SIT.arbeider,
+        },
+        {
+            niveau: 6, nom: 'Mevrouw Wouters', role: 'Werkloze · Gent',
+            age: '29 ans', situation: 'Célibataire, 1 enfant', ville: 'Gent', beroep: 'Werkloze',
+            voiceId: 'MiueK1FXuZTCItgbQwPu',
+            voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.30, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=SW&background=f3e8ff&color=6b21a8',
+            desc: "Parle vite, expressions gantaises. Parfois hésitante, demande des clarifications.",
+            champsIds: ['naam','adres','burgerlijke_staat','rijksregisternummer','kinderen_ten_laste','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Mevrouw Wouters, 29 ans, werkloze à Gent. Célibataire avec 1 enfant. Demande de crédit chez Cofidis. Parle vite avec un accent gantois et des expressions locales ('da', 'ge'). Pose parfois des questions de clarification.",
+            situationProInstructie: SIT.werkloze,
+        },
+        {
+            niveau: 7, nom: 'Meneer Hermans', role: 'Arbeidsongeschikt · Liège',
+            age: '54 ans', situation: 'Divorcé', ville: 'Liège', beroep: 'Arbeidsongeschikt',
+            voiceId: 'o3Pmyfc3Ez1s2CJKuwJf',
+            voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.30, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=PH&background=fce7f3&color=9d174d',
+            desc: "Accent liégeois en NL. Hésitations fréquentes. Difficile à suivre.",
+            champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+            prompt: "Meneer Hermans, 54 ans, arbeidsongeschikt (invalide) à Liège. Divorcé. Demande de crédit chez Cofidis. Parle néerlandais avec un accent liégeois prononcé, hésitations fréquentes, phrases parfois incomplètes. Coopératif mais fatigué.",
+            situationProInstructie: SIT.invalide,
+        },
+        {
+            niveau: 8, nom: 'Mevrouw Stevens', role: 'Bediende · Kortrijk',
+            age: '41 ans', situation: 'Mariée', ville: 'Kortrijk', beroep: 'Bediende',
+            voiceId: 'pjcYQlDFKMbcOUp6F5GD',
+            voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.35, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=AS&background=ecfdf5&color=065f46',
+            desc: "Fort accent ouest-flamand. Parle vite. Réponses très courtes.",
+            champsIds: ['naam','adres','rijksregisternummer','burgerlijke_staat','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Mevrouw Stevens, 41 ans, bediende à Kortrijk. Mariée. Demande de crédit chez Cofidis. Parle très vite avec un fort accent ouest-flamand ('da', 'ge', diphtongues). Réponses courtes, peu bavarde.",
+            situationProInstructie: SIT.bediende('2000-2500€'),
+        },
+        {
+            niveau: 9, nom: 'Meneer Dubois', role: 'Gepensioneerde · Tongeren',
+            age: '64 ans', situation: 'Veuf', ville: 'Tongeren', beroep: 'Gepensioneerd',
+            voiceId: 'PrYUlaJFEdOSVy6jaEaG',
+            voiceSettings: { stability: 0.40, similarity_boost: 0.85, style: 0.40, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=RD&background=fff7ed&color=9a3412',
+            desc: "Fort accent limbourgeois. Diphtongues typiques. Très difficile à suivre.",
+            champsIds: ['naam','adres','geboortedatum','rijksregisternummer','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+            prompt: "Meneer Dubois, 64 ans, gepensioneerd à Tongeren. Veuf. Demande de crédit chez Cofidis. Parle avec un fort accent limbourgeois (diphtongues, intonation chantante typique). Coopératif mais son accent rend la compréhension difficile.",
+            situationProInstructie: SIT.gepensioneerd,
+        },
+        {
+            niveau: 10, nom: 'Mevrouw Vandenberghe', role: 'Zelfstandige · Brugge',
+            age: '36 ans', situation: 'Mariée, 2 enfants', ville: 'Brugge', beroep: 'Zelfstandige',
+            voiceId: 'qMfbtjrTDTlGtBy52G6E',
+            voiceSettings: { stability: 0.40, similarity_boost: 0.80, style: 0.45, use_speaker_boost: true },
+            image: 'https://ui-avatars.com/api/?name=LV&background=f0fdf4&color=14532d',
+            desc: "Très rapide. West-flandrien fort. Expressions locales. Le défi ultime.",
+            champsIds: ['naam','adres','rijksregisternummer','kredietbedrag','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+            prompt: "Mevrouw Vandenberghe, 36 ans, zelfstandige (design) à Bruges. Mariée, 2 enfants. Demande de crédit chez Cofidis. Parle très vite avec un fort accent west-flamand et des expressions locales ('da', 'ge'). Répond très brièvement mais répond toujours à toutes les questions.",
+            situationProInstructie: SIT.zelfstandige,
+        },
+    ];
+
+    // ==========================================
+    // VARIABLES D'ÉTAT
+    // ==========================================
+    let current = PROFILES[0];
+    let ws = null;
+    let isCalling = false;
+    let audioCtx = null;
+    let audioQueue = [];
+    let isPlaying = false;
+    let correctionTimeout = null;
+    let totalChampsSession = 6;
+    let pendingGameOver = null;
+
+    // Sélecteurs DOM
+    const btnCall        = document.getElementById('btn-call');
+    const callIcon       = document.getElementById('call-icon');
+    const jaugeEl        = document.getElementById('jauge');
+    const scoreTxt       = document.getElementById('score-txt');
+    const levelSelector  = document.getElementById('level-selector');
+    const liveSpeech     = document.getElementById('live-speech');
+    const liveContainer  = document.getElementById('live-container');
+    const clientResponse = document.getElementById('client-response');
+    const correctionZone = document.getElementById('correction-zone');
+    const correctionText = document.getElementById('correction-text');
+    const checklist      = document.getElementById('checklist');
+
+    // ==========================================
+    // HISTORIQUE DES ÉCHANGES (4 derniers)
+    // ==========================================
+    const chatLog = [];
+    const chatHistory = document.getElementById('chat-history');
+    const chatLogEl   = document.getElementById('chat-log');
+
+    function addToLog(role, text) {
+        chatLog.push({ role, text });
+        // Garder max 8 entrées = 4 paires David/Client
+        while (chatLog.length > 8) chatLog.shift();
+        renderLog();
+    }
+
+    function renderLog() {
+        chatLogEl.innerHTML = '';
+        chatLog.forEach(item => {
+            const div = document.createElement('div');
+            if (item.role === 'david') {
+                div.className = 'flex items-start gap-1.5';
+                div.innerHTML = `<span class="text-[8px] font-black text-slate-400 shrink-0 mt-0.5 w-3">D</span><span class="text-[10px] text-slate-700 bg-slate-100 rounded-xl px-2 py-1 leading-snug">${item.text}</span>`;
+            } else {
+                div.className = 'flex items-start gap-1.5 justify-end';
+                div.innerHTML = `<span class="text-[10px] text-blue-800 bg-blue-50 rounded-xl px-2 py-1 leading-snug">${item.text}</span><span class="text-[8px] font-black text-blue-400 shrink-0 mt-0.5 w-3">C</span>`;
+            }
+            chatLogEl.appendChild(div);
+        });
+        chatHistory.classList.remove('hidden');
+        chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    }
+
+    // ==========================================
+    // AUDIO CONTEXT (iOS Safari compatible)
+    // ==========================================
+    function ensureAudioCtx() {
+        if (!audioCtx) {
+            try { audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 }); }
+            catch(e) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e2) {} }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // ==========================================
+    // PROFIL SELECTOR
+    // ==========================================
+    PROFILES.forEach((p, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.text = `Niveau ${p.niveau} : ${p.nom}`;
+        levelSelector.add(o);
+    });
+
+    function updateUI() {
+        document.getElementById('ui-name').innerText      = current.nom;
+        document.getElementById('ui-role').innerText      = current.role;
+        document.getElementById('ui-avatar').src          = current.image;
+        document.getElementById('ui-desc').innerText      = current.desc;
+        document.getElementById('ui-age').innerText       = current.age;
+        document.getElementById('ui-situation').innerText = current.situation;
+        document.getElementById('ui-ville').innerText     = current.ville;
+        document.getElementById('ui-beroep').innerText    = current.beroep;
+        jaugeEl.style.width = '0%';
+        scoreTxt.innerText  = '0 / —';
+        checklist.innerHTML = '<p class="text-[10px] text-slate-300 italic">Lancez l\'appel pour voir les champs…</p>';
+    }
+
+    levelSelector.onchange = (e) => {
+        if (isCalling) location.reload();
+        current = PROFILES[e.target.value];
+        updateUI();
+    };
+
+    // ==========================================
+    // CHECKLIST DYNAMIQUE
+    // ==========================================
+    function buildChecklist(champs) {
+        checklist.innerHTML = '';
+        totalChampsSession = champs.length;
+        scoreTxt.innerText = '0 / ' + totalChampsSession;
+
+        champs.forEach(c => {
+            const div = document.createElement('div');
+            div.id = 'champ-' + c.id;
+            div.className = 'champ-item pending flex items-center gap-2';
+            div.innerHTML = `
+                <div class="champ-dot flex items-center justify-center">
+                    <span class="champ-check text-white text-[10px] font-black leading-none">✓</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="champ-label font-bold leading-tight">${c.label}</span>
+                    <span class="champ-fr text-[10px] font-medium">${c.fr}</span>
+                </div>
+            `;
+            checklist.appendChild(div);
+        });
+    }
+
+    function cocherChamp(champId) {
+        const el = document.getElementById('champ-' + champId);
+        if (el) {
+            el.classList.remove('pending');
+            el.classList.add('done');
+        }
+    }
+
+    // ==========================================
+    // APPEL / WEBSOCKET
+    // ==========================================
+    async function startCall() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+            ensureAudioCtx();
+
+            // AudioWorklet (remplace ScriptProcessorNode déprécié)
+            await audioCtx.audioWorklet.addModule('/audio-processor.js');
+            const source = audioCtx.createMediaStreamSource(stream);
+            const workletNode = new AudioWorkletNode(audioCtx, 'pcm-processor');
+            source.connect(workletNode);
+            workletNode.connect(audioCtx.destination);
+
+            // wss:// en HTTPS (Render), ws:// en local
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${protocol}://${window.location.host}`);
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'config', ...current, sampleRate: audioCtx.sampleRate }));
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 animate-pulse";
+                document.getElementById('status-text').innerText = "En ligne";
+                document.getElementById('state-msg').innerText = "Appel en cours…";
+                callIcon.setAttribute('data-lucide', 'phone-off');
+                callIcon.classList.replace('text-green-500', 'text-red-500');
+                liveContainer.classList.add('active');
+                lucide.createIcons();
+            };
+
+            // Envoi des chunks PCM via le worklet
+            workletNode.port.onmessage = (e) => {
+                if (ws?.readyState === WebSocket.OPEN && isCalling && !isPlaying) {
+                    ws.send(e.data);
+                }
+            };
+
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+
+                // Champs sélectionnés → construire la checklist et l'aide
+                if (data.type === 'fields_selected') {
+                    buildChecklist(data.champs);
+                }
+
+                if (data.type === 'interim_text') {
+                    liveSpeech.innerText = data.value + (data.isFinal ? "" : "…");
+                    liveSpeech.className = "text-sm font-bold text-blue-600 italic";
+                }
+
+                if (data.type === 'ia_thinking') {
+                    liveSpeech.innerText = "⏳ Client en train de répondre… ne parlez pas encore";
+                    liveSpeech.className = "text-sm font-bold text-orange-500 italic animate-pulse";
+                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-orange-400 animate-pulse";
+                    document.getElementById('status-text').innerText = "IA en cours";
+                }
+
+                if (data.type === 'text') {
+                    liveSpeech.innerText = "⏳ Client en train de répondre…";
+                    liveSpeech.className = "text-sm font-bold text-orange-500 italic animate-pulse";
+                    document.getElementById('state-msg').innerText = "Client répond…";
+                    addToLog('david', data.value);
+                }
+
+                if (data.type === 'ai_response') {
+                    liveSpeech.innerText = "À vous de poser la prochaine question…";
+                    liveSpeech.className = "text-sm font-semibold text-slate-400 italic";
+                    document.getElementById('state-msg').innerText = "À vous de parler";
+                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 animate-pulse";
+                    document.getElementById('status-text').innerText = "En écoute";
+                    clientResponse.innerText = data.value;
+                    addToLog('client', data.value);
+
+                    // Progression
+                    const filled = data.champsRemplis?.length || 0;
+                    const total  = data.totalChamps || totalChampsSession;
+                    jaugeEl.style.width = Math.round(filled / total * 100) + "%";
+                    scoreTxt.innerText  = filled + ' / ' + total;
+
+                    if (data.champRempli) cocherChamp(data.champRempli);
+                    updateHint(data.champsRemplis || [], false);
+
+                    // Correction linguistique
+                    if (data.correction) {
+                        correctionText.innerText = data.correction;
+                        correctionZone.classList.remove('hidden');
+                        if (correctionTimeout) clearTimeout(correctionTimeout);
+                        correctionTimeout = setTimeout(() => correctionZone.classList.add('hidden'), 8000);
+                    } else {
+                        correctionZone.classList.add('hidden');
+                    }
+                }
+
+                if (data.type === 'audio') {
+                    audioQueue.push(data.value);
+                    if (!isPlaying) playNext();
+                }
+
+                if (data.type === 'goodbye_phase') {
+                    handleGoodbyePhase();
+                }
+
+                if (data.type === 'game_over') {
+                    isCalling = false;
+                    // Attendre la fin de l'audio avant d'afficher le modal
+                    if (isPlaying || audioQueue.length > 0) {
+                        pendingGameOver = data;
+                    } else {
+                        showGameOverModal(data);
+                    }
+                }
+            };
+
+        } catch (err) {
+            alert("Erreur micro : " + err.message);
+            isCalling = false;
+        }
+    }
+
+    // ==========================================
+    // VICTOIRE — Son + Modal
+    // ==========================================
+    function playVictorySound() {
+        ensureAudioCtx();
+        if (!audioCtx) return;
+        const gain = audioCtx.createGain();
+        gain.connect(audioCtx.destination);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        // Arpège Do Mi Sol Do (octave haute)
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            osc.start(audioCtx.currentTime + i * 0.18);
+            osc.stop(audioCtx.currentTime + i * 0.18 + 0.45);
+        });
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 2);
+    }
+
+    function showGameOverModal(data) {
+        playVictorySound();
+        document.getElementById('modal-debrief').classList.replace('hidden', 'flex');
+        if (data.debrief) {
+            document.getElementById('debrief-body').innerHTML = `
+                <p><b>🎯 Bilan :</b> ${data.debrief.diagnostic}</p>
+                <p class="text-green-600 font-bold mt-2">✅ Point fort : ${data.debrief.point_fort}</p>
+                <p class="text-red-500 font-bold mt-2">❌ À travailler : ${data.debrief.a_corriger}</p>
+                <p class="text-blue-600 font-bold mt-2 bg-blue-50 p-3 rounded-lg">📝 Phrase modèle : <span class="italic">${data.debrief.phrase_modele}</span></p>
+            `;
+        }
+    }
+
+    // ==========================================
+    // LECTURE AUDIO — Fix iOS Safari
+    // ==========================================
+    function playNext() {
+        if (audioQueue.length === 0) {
+            isPlaying = false;
+            document.getElementById('visualizer').classList.remove('speaking');
+            if (isCalling) {
+                document.getElementById('state-msg').innerText = "À vous de poser la prochaine question";
+            }
+            // Affiche le modal seulement quand tout l'audio est terminé
+            if (pendingGameOver) {
+                showGameOverModal(pendingGameOver);
+                pendingGameOver = null;
+            }
+            return;
+        }
+        isPlaying = true;
+        document.getElementById('visualizer').classList.add('speaking');
+
+        // Fix iOS Safari : AudioContext.decodeAudioData (déverrouillé au tap du bouton)
+        const base64 = audioQueue.shift();
+        try {
+            const binary = atob(base64);
+            const bytes  = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            ensureAudioCtx();
+            audioCtx.decodeAudioData(bytes.buffer.slice(0),
+                (buffer) => {
+                    const src = audioCtx.createBufferSource();
+                    src.buffer = buffer;
+                    src.connect(audioCtx.destination);
+                    src.onended = playNext;
+                    src.start(0);
+                },
+                () => { console.warn("⚠️ Audio ElevenLabs illisible."); playNext(); }
+            );
+        } catch(e) { console.warn("⚠️ Erreur décodage audio :", e); playNext(); }
+    }
+
+    // ==========================================
+    // BOUTON APPEL
+    // ==========================================
+    btnCall.onclick = () => {
+        if (!isCalling) { isCalling = true; startCall(); }
+        else location.reload();
+    };
+
+    // ==========================================
+    // GOODBYE PHASE — message serveur
+    // ==========================================
+    function handleGoodbyePhase() {
+        document.getElementById('state-msg').innerText = "Prenez congé du client !";
+        liveSpeech.innerText = "🙏 Dossier complet ! Dites au revoir en néerlandais...";
+        liveSpeech.className = "text-sm font-bold text-emerald-600 italic animate-pulse";
+        clientResponse.innerHTML = `<span class="text-emerald-600 font-black text-xs">✅ Toutes les informations collectées !</span>`;
+        updateHint(null, true);
+    }
+
+    // ==========================================
+    // BOÎTE DE SUGGESTION CONTEXTUELLE
+    // ==========================================
+    const SCRIPT_DATA = {
+        naam: {
+            trans: null,
+            q: 'Spreek ik met meneer / mevrouw [NOM DU CLIENT] ?',
+            alts: ['Kunt u uw volledige naam bevestigen ?'],
+            hint: 'Le client confirme son identité → tu as le bon interlocuteur.',
+        },
+        adres: {
+            trans: 'Ik heb ook uw adresgegevens nodig.',
+            q: 'Kunt u mij uw huidige woonadres geven ?',
+            alts: ['Wat is uw straat, huisnummer en gemeente ?', 'Wat is uw postcode ?'],
+            hint: 'Note rue, numéro, code postal et commune.',
+        },
+        geboortedatum: {
+            trans: 'Dan heb ik ook uw persoonlijke gegevens nodig.',
+            q: 'Wat is uw geboortedatum ?',
+            alts: ['Wanneer bent u geboren ?', 'Op welke datum bent u geboren ?'],
+            hint: 'Le client donne sa date — en néerlandais les chiffres seront épelés.',
+        },
+        rijksregisternummer: {
+            trans: 'Ik heb ook uw rijksregisternummer nodig.',
+            q: 'Kunt u mij uw rijksregisternummer geven, cijfer per cijfer ?',
+            alts: ['Dat is het elf-cijferig nummer op uw identiteitskaart.', 'Kunt u het spellen ?'],
+            hint: 'Écoute attentivement — 11 chiffres au format XX.XX.XX-XXX.XX.',
+        },
+        kredietbedrag: {
+            trans: 'Dan wil ik het ook hebben over uw kredietaanvraag zelf.',
+            q: 'Hoeveel wilt u lenen ?',
+            alts: ['Kunt u het gewenste kredietbedrag bevestigen ?', 'Voor welk bedrag heeft u een aanvraag gedaan ?'],
+            hint: 'Note le montant en euros.',
+        },
+        kredietdoel: {
+            trans: 'En waarvoor is dit krediet precies bedoeld ?',
+            q: 'Wat is het doel van uw krediet ?',
+            alts: ['Waarvoor gaat u het geld gebruiken ?', 'Voor welk project is dit krediet ?'],
+            hint: 'Voiture, rénovation, voyage... note le projet.',
+        },
+        burgerlijke_staat: {
+            trans: 'Dan heb ik ook wat persoonlijke informatie nodig.',
+            q: 'Wat is uw burgerlijke staat ?',
+            alts: ['Bent u getrouwd, alleenstaand, gescheiden... ?', 'Woont u samen ?'],
+            hint: 'Écoute : getrouwd / ongehuwd / gescheiden / weduwe / samenwonend.',
+        },
+        kinderen_ten_laste: {
+            trans: null,
+            q: 'Hoeveel kinderen heeft u ten laste ?',
+            alts: ['Ontvangt u kinderbijslag ?', 'Hoeveel bedraagt uw kinderbijslag per maand ?'],
+            hint: 'Note le nombre d\'enfants et le montant des allocations.',
+        },
+        beroep_type: {
+            trans: 'Dan wil ik nu uw beroepssituatie bespreken.',
+            q: 'Wat is uw huidige beroepssituatie ?',
+            alts: ['Bent u bediende, arbeider, gepensioneerd, werkloze... ?', 'Werkt u momenteel ?'],
+            hint: 'Note le type de situation parmi les 6 possibles.',
+        },
+        maandinkomen: {
+            trans: 'En wat betreft uw inkomen...',
+            q: 'Hoeveel bedraagt uw netto maandinkomen ?',
+            alts: ['Wat is uw netto maandsalaris / pensioen / uitkering ?', 'Hoeveel verdient u per maand, netto ?'],
+            hint: 'Note le montant exact en euros.',
+        },
+        identiteitskaart: {
+            trans: 'Ik heb ook een kopie van uw identiteitskaart nodig.',
+            q: 'Kunt u een kopie, recto verso, van uw identiteitskaart opsturen ?',
+            alts: ['Voor- en achterkant, graag.'],
+            hint: 'Si oui → demande l\'adresse e-mail.',
+            email: 'Naar welk e-mailadres kan ik het verzoek sturen ?',
+        },
+        bewijs_inkomen: {
+            trans: 'En tot slot heb ik ook een bewijs van uw inkomen nodig.',
+            q: 'Kunt u [uw loonstrook / een bankafschrift / het aanslagbiljet] doorsturen ?',
+            alts: ['Kunt u het meest recente document met uw inkomen opsturen ?'],
+            hint: 'Si oui → demande l\'adresse e-mail si pas encore donnée.',
+            email: 'Naar welk e-mailadres kan ik dat sturen ? / Wat is uw e-mailadres ?',
+        },
+    };
+
+    const HINT_LABELS = {
+        naam:                'Confirme l\'identité du client',
+        adres:               'Demande son adresse complète',
+        geboortedatum:       'Demande sa date de naissance',
+        rijksregisternummer: 'Demande le numéro de registre national (chiffre par chiffre)',
+        kredietbedrag:       'Demande le montant du crédit souhaité',
+        kredietdoel:         'Demande le but du crédit',
+        burgerlijke_staat:   'Demande l\'état civil',
+        kinderen_ten_laste:  'Demande le nombre d\'enfants + montant kinderbijslag',
+        beroep_type:         'Demande la situation professionnelle',
+        maandinkomen:        'Demande le revenu mensuel net',
+        identiteitskaart:    'Demande une copie recto verso → puis adresse e-mail',
+        bewijs_inkomen:      'Demande le justificatif de revenu → puis adresse e-mail',
+    };
+
+    let hintVisible = true;
+    function toggleHint() {
+        hintVisible = !hintVisible;
+        document.getElementById('hint-body').classList.toggle('hidden', !hintVisible);
+        document.getElementById('hint-toggle-btn').textContent = hintVisible ? 'Masquer' : 'Afficher';
+    }
+
+    function updateHint(champsRemplis, goodbyeActive) {
+        const box    = document.getElementById('hint-box');
+        const trans  = document.getElementById('hint-trans');
+        const phrase = document.getElementById('hint-phrase');
+        const fr     = document.getElementById('hint-fr');
+
+        if (goodbyeActive) {
+            box.classList.remove('hidden');
+            document.getElementById('hint-body').classList.toggle('hidden', !hintVisible);
+            trans.classList.add('hidden');
+            phrase.textContent = '"Uitstekend ! Dank u wel voor uw medewerking. Heeft u nog vragen voor mij ? Dan wens ik u een prettige dag. Tot ziens !"';
+            fr.textContent = '→ Prends congé du client pour terminer l\'appel';
+            return;
+        }
+
+        if (!champsRemplis) return;
+
+        // Trouver le prochain champ non rempli
+        const pending = current.champsIds.filter(id => !champsRemplis.includes(id));
+        if (pending.length === 0) return;
+
+        const nextId = pending[0];
+        const d = SCRIPT_DATA[nextId];
+        if (!d) return;
+
+        box.classList.remove('hidden');
+        document.getElementById('hint-body').classList.toggle('hidden', !hintVisible);
+        if (d.trans) {
+            trans.textContent = '↪ ' + d.trans;
+            trans.classList.remove('hidden');
+        } else {
+            trans.classList.add('hidden');
+        }
+        // Question principale + éventuellement l'email si doc
+        const mainQ = d.email
+            ? `"${d.q}" → puis : "${d.email}"`
+            : `"${d.q}"`;
+        phrase.textContent = mainQ;
+        fr.textContent = '→ ' + (HINT_LABELS[nextId] || '');
+    }
+
+    updateUI();
+</script>
+</body>
+</html>
