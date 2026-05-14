@@ -2,10 +2,18 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../Simulate
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
+const path = require('path');
+const realtimeBranch = require('./server-realtime');   // proto Gemini Live (branche parallèle)
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+// wss principal en noServer pour pouvoir router les upgrades par path
+// (le proto Gemini Live a son propre WS sur /ws-realtime)
+const wss = new WebSocket.Server({ noServer: true });
+server.on('upgrade', (req, socket, head) => {
+    if (req.url === '/ws-realtime') return;   // géré par server-realtime.js
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+});
 
 const dgKey    = process.env.DEEPGRAM_API_KEY?.trim();
 const geminiKey = process.env.GEMINI_API_KEY?.trim();
@@ -19,6 +27,12 @@ if (!elevenKey) console.error("❌ ELEVENLABS_API_KEY manquante !");
 console.log(`=========================================`);
 
 app.use(express.static('public'));
+
+// ---- BRANCHE PARALLÈLE — Prototype Gemini Live (Vlaams) ----
+// Route /realtime sert public/realtime.html, et /ws-realtime monte
+// un WS distinct sans toucher au wss principal. Voir architecture.md.
+app.get('/realtime', (req, res) => res.sendFile(path.join(__dirname, 'public', 'realtime.html')));
+realtimeBranch.attachWebSocket(server, geminiKey);
 
 // ==========================================
 // CORRECTION TRANSCRIPTION DEEPGRAM
@@ -209,7 +223,9 @@ wss.on('connection', (ws) => {
         const champsActifs   = champsRequis;
         const champsRestants = champsActifs.filter(c => !champsRemplis.includes(c.id));
         const idsDisponibles = champsActifs.map(c => c.id).join(', ');
-        const beroepInstructie = currentConfig.situationProInstructie || '';
+        const beroepInstructie        = currentConfig.situationProInstructie   || '';
+        const comportementInstructie  = currentConfig.comportementInstructie  || '';
+        const humeurInstructie        = currentConfig.humeurInstructie        || '';
 
         const goodbyeInstructie = goodbyePhase ? `
 
@@ -229,11 +245,27 @@ Tu as introduit une demande de crédit chez Cofidis Belgique. Un(e) conseiller(�
 ⚠️ RÈGLE ABSOLUE — TU ES LE CLIENT, PAS LE CONSEILLER :
 Tu ne poses JAMAIS de questions sur le dossier, les documents à fournir, le montant du crédit, les conditions, les procédures Cofidis ou quoi que ce soit lié au crédit. Tu réponds UNIQUEMENT à ce que le conseiller te demande. Si tu es tenté(e) de poser une question sur le dossier ou le crédit, remplace-la par une courte réaction neutre ("Oké.", "Ik begrijp het.", "Goed.") et attends la prochaine question.
 
+⚠️ RÈGLE DE RÉPONSE STRICTE :
+Tu ne donnes JAMAIS d'information de façon spontanée ou proactive. Chaque information doit être explicitement demandée par le conseiller. Ne donne QUE ce qui est demandé, rien de plus. N'anticipe pas les questions suivantes. Si le conseiller n'a pas encore demandé ton adresse, ne la donne pas. Si le conseiller n'a pas encore demandé ta date de naissance, ne la donne pas. Attends d'être interrogé(e).
+
 PROFIL : ${currentConfig.prompt}
 SITUATION PRO : ${beroepInstructie}
+COMPORTEMENT : ${comportementInstructie}
+HUMEUR ET PERSONNALITÉ : ${humeurInstructie}
 
 CHAMPS DÉJÀ COLLECTÉS : ${champsRemplis.length > 0 ? champsRemplis.join(', ') : 'aucun'}
 CHAMPS ENCORE NÉCESSAIRES : ${champsRestants.map(c => `${c.id} (${c.fr})`).join(', ') || 'dossier complet !'}
+
+RÈGLE DE RÉPÉTITION :
+Si le conseiller dit "kunt u herhalen", "kunt u dat herhalen", "sorry?", "pardon?", "wat zei u?", "kunt u dat herhalen alstublieft" ou toute variante exprimant qu'il n'a pas compris : répète l'information que tu viens de donner, légèrement reformulée et plus lentement si ton niveau le permet. Ne marque aucun nouveau champ_rempli dans ce cas (variation = 0).
+
+RÈGLE DE VÉRIFICATION (champs complexes) :
+Après avoir fourni les informations pour 'geboortedatum', 'rijksregisternummer', 'adres' ou 'maandinkomen', ajoute SYSTÉMATIQUEMENT une courte phrase demandant au conseiller de confirmer :
+- Pour geboortedatum : "...Heeft u dat genoteerd?" ou "...Klopt dat zo?"
+- Pour rijksregisternummer : "...Heeft u dat opgeschreven?" ou "...Kunt u het even herhalen?"
+- Pour adres : "...Heeft u het adres?" ou "...Is dat duidelijk?"
+- Pour maandinkomen : "...Heeft u dat?" ou "...Klopt dat bedrag?"
+Si le conseiller répète correctement (ou dit "ja", "correct", "klopt", "ik heb het"), confirme brièvement ("Perfect." / "Ja, dat klopt.") — ne marque pas de nouveau champ. Si le conseiller répète incorrectement, corrige gentiment.
 
 RÈGLES STRICTES :
 0. Tu es le CLIENT. ${nomConseiller} est le/la conseiller(ère) Cofidis qui t'appelle. Tu l'appelles UNIQUEMENT "u" ou "${titreConseiller}" — jamais par son nom de famille. Tu ne connais pas le nom de famille du/de la conseiller(ère) et tu ne le devines JAMAIS. N'utilise surtout pas TON propre nom de famille pour appeler le/la conseiller(ère) (ex: si tu t'appelles Janssen, ne dis JAMAIS "meneer Janssen" ou "mevrouw Janssen" en parlant au/à la conseiller(ère)).
@@ -344,23 +376,40 @@ RÉPONDS EN JSON :
         }
     };
 
-    // ---- DÉBRIEF (sans "Coach Mady") ----
+    // ---- DÉBRIEF PÉDAGOGIQUE ----
     const declencherDebrief = async () => {
         const nomConseiller = currentConfig.userName || 'le conseiller';
-        const pronom = currentConfig.userGender === 'F' ? 'elle' : 'il';
-        const pronominalisationQ = currentConfig.userGender === 'F' ? 'ses' : 'ses';
-        const promptDebrief = `Tu es un coach spécialiste en apprentissage du néerlandais professionnel.
-LANGUE DE RÉPONSE : FRANÇAIS UNIQUEMENT. Toutes les valeurs JSON doivent être rédigées en français.
-Tutoie ${nomConseiller}. Analyse ses questions en néerlandais dans ce contexte d'appel sortant Cofidis.
-IMPORTANT : ne commente PAS la prononciation de mots propres français comme "Cofidis".
+        const pronom        = currentConfig.userGender === 'F' ? 'elle' : 'il';
+        const promptDebrief = `Tu es un coach bienveillant spécialisé en néerlandais professionnel belge.
+LANGUE DE RÉPONSE : FRANÇAIS UNIQUEMENT.
+Tutoie ${nomConseiller}. Analyse UNIQUEMENT les lignes commençant par "${nomConseiller}:" dans le transcript.
+NE commente PAS les mots propres français (Cofidis, noms belges) ni la prononciation de ceux-ci.
+Sois encourageant(e) ET précis(e) — donne des exemples concrets tirés du transcript.
+Si le transcript est très court (moins de 3 échanges), adapte ton analyse à ce qui est disponible.
 
-RÉPONDS UNIQUEMENT EN JSON, toutes les valeurs en français :
+RÉPONDS UNIQUEMENT EN JSON valide, toutes les valeurs en français :
 {
-  "diagnostic": "bilan général du niveau de néerlandais de ${nomConseiller} en 2-3 phrases",
-  "point_fort": "ce qu'${pronom} a bien formulé en néerlandais",
-  "a_corriger": "erreurs de néerlandais à travailler (pas les mots FR/noms propres)",
-  "phrase_modele": "un exemple de question bien formulée en néerlandais pour ce contexte crédit"
+  "encouragement": "Message chaleureux de 2 phrases sur l'effort et le courage de pratiquer",
+  "points_forts": [
+    "point fort 1 avec exemple concret tiré du transcript",
+    "point fort 2 avec exemple concret"
+  ],
+  "grammaire": [
+    { "erreur": "phrase exacte mal formulée", "correction": "forme correcte", "explication": "règle en 1 phrase" },
+    { "erreur": "...", "correction": "...", "explication": "..." }
+  ],
+  "conjugaison": [
+    { "erreur": "forme utilisée", "correction": "forme correcte", "explication": "règle courte" }
+  ],
+  "vocabulaire": [
+    { "mot_nl": "mot ou expression NL utile", "traduction": "traduction FR", "exemple": "exemple d'usage dans ce contexte crédit" },
+    { "mot_nl": "...", "traduction": "...", "exemple": "..." },
+    { "mot_nl": "...", "traduction": "...", "exemple": "..." }
+  ],
+  "prononciation": "Feedback sur l'accent et la prononciation basé sur la transcription Deepgram (difficultés typiques du NL : g, ij, eu, ui, r...). Si pas d'info suffisante, donne des conseils généraux pour ce niveau.",
+  "phrase_modele": "Une question exemplaire en NL parfaitement formulée pour ce contexte crédit"
 }
+Règles : grammaire et conjugaison doivent avoir 1 à 3 entrées chacune (utilise [] vide si aucune erreur trouvée). vocabulaire doit avoir exactement 3 entrées.
 
 Transcript :
 ${historique.join('\n')}`;
@@ -380,6 +429,37 @@ ${historique.join('\n')}`;
             console.error("❌ Erreur Debrief:", e.message);
             safeSend({ type: 'game_over', champsRemplis, totalChamps: champsRequis.length });
         }
+    };
+
+    // ---- DÉCROCHÉ INITIAL DU CLIENT ----
+    const genererDecroché = () => {
+        const niveau = currentConfig.niveau || 1;
+        const nom    = currentConfig.nom || '';
+        const h      = new Date().getHours();
+        const moment = h < 12 ? 'goedemorgen' : h < 18 ? 'goedemiddag' : 'goedenavond';
+
+        let options;
+        if (niveau <= 2) {
+            options = [
+                `Ja, hallo? U spreekt met ${nom}, ${moment}.`,
+                `Hallo? Ja, met ${nom}. ${moment.charAt(0).toUpperCase() + moment.slice(1)}, spreekt u?`,
+            ];
+        } else if (niveau <= 5) {
+            options = [
+                `Ja, hallo? Met ${nom}.`,
+                `Ja, ${moment}.`,
+                `Hallo, ja?`,
+            ];
+        } else if (niveau <= 8) {
+            options = [
+                `Ja, hallo?`,
+                `Ja?`,
+                `Hallo.`,
+            ];
+        } else {
+            options = [`Ja?`, `Ja.`, `Hallo.`];
+        }
+        return options[Math.floor(Math.random() * options.length)];
     };
 
     // ---- ELEVENLABS TTS ----
@@ -419,6 +499,14 @@ ${historique.join('\n')}`;
                 safeSend({ type: 'fields_selected', champs: champsRequis });
                 setupDeepgram();
                 console.log(`📋 Champs session (${champsRequis.length}) : ${champsRequis.map(c => c.id).join(', ')}`);
+
+                // Le client "décroche" et parle en premier
+                setTimeout(async () => {
+                    const salutation = genererDecroché();
+                    historique.push(`${currentConfig.nom}: "${salutation}"`);
+                    safeSend({ type: 'client_greeting', value: salutation });
+                    await genererVoix(salutation);
+                }, 800);
             }
         } catch (e) {
             if (dgConnection?.readyState === WebSocket.OPEN && !isGameOver) {

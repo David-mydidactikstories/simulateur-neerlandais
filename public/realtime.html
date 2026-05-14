@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🇧🇪 Simulateur NL — Gemini Live (proto)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .visualizer.speaking { animation: pulse 0.7s ease-in-out infinite; }
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.85; }
+        50%      { transform: scale(1.08); opacity: 1; }
+    }
+    .champ-item       { padding: 6px 8px; border-radius: 8px; font-size: 11px; transition: all 0.2s; }
+    .champ-item.pending { background: #f1f5f9; color: #64748b; }
+    .champ-item.done    { background: #dcfce7; color: #166534; text-decoration: line-through; }
+    .champ-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .pending .champ-dot { background: #cbd5e1; }
+    .done    .champ-dot { background: #16a34a; }
+    .champ-check { color: white; font-size: 10px; font-weight: 900; opacity: 0; }
+    .done .champ-check { opacity: 1; }
+    .badge-proto { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; font-weight: 900; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: blink 1s infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- ====================================================================
+     MODAL ACCUEIL — Prénom + Genre
+==================================================================== -->
+<div id="modal-welcome" class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="badge-proto text-[9px] uppercase px-2 py-0.5 rounded">Proto Gemini Live</span>
+        </div>
+        <h2 class="text-2xl font-black text-slate-900 mb-2">🇧🇪 Simulateur Néerlandais</h2>
+        <p class="text-sm text-slate-500 mb-6">Speech-to-speech direct via Gemini Live · niveau 1 uniquement</p>
+
+        <label class="block text-xs font-bold text-slate-600 mb-1">Ton prénom</label>
+        <input id="input-username" type="text" placeholder="ex: David, Dominique…"
+               class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 mb-4 text-sm focus:outline-none focus:border-blue-400"
+               onkeydown="if(event.key==='Enter') validerAccueil()">
+
+        <label class="block text-xs font-bold text-slate-600 mb-2">Tu es…</label>
+        <div class="flex gap-2 mb-6">
+            <button id="btn-genre-m" onclick="selectGender('M')"
+                    class="flex-1 py-3 rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-black transition-all">
+                Monsieur
+            </button>
+            <button id="btn-genre-f" onclick="selectGender('F')"
+                    class="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-600 hover:border-pink-400 text-sm font-black transition-all">
+                Madame
+            </button>
+        </div>
+
+        <button onclick="validerAccueil()"
+                class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black transition-all">
+            Continuer
+        </button>
+    </div>
+</div>
+
+<!-- ====================================================================
+     MODAL DÉBRIEF
+==================================================================== -->
+<div id="modal-debrief" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+        <div class="px-8 pt-8 pb-2">
+            <h2 id="debrief-title" class="text-xl font-black text-slate-900 tracking-tight">Dossier Complété !</h2>
+            <p class="text-xs text-slate-400">Voici ton débrief pédagogique.</p>
+        </div>
+        <div id="debrief-body" class="overflow-y-auto px-8 pb-4 space-y-4 text-xs text-slate-600 leading-relaxed flex-1"></div>
+        <div class="px-8 pb-6 pt-2">
+            <button onclick="location.reload()"
+                    class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm">
+                Recommencer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ====================================================================
+     LAYOUT PRINCIPAL
+==================================================================== -->
+<div class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black">NL</div>
+            <div>
+                <p class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Simulateur Cofidis · Crédit voiture</p>
+                <h1 class="text-lg font-black text-slate-900">
+                    Niveau 1 — Vlaams
+                    <span class="badge-proto text-[9px] uppercase px-2 py-0.5 rounded ml-2">Proto Live</span>
+                </h1>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+            <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-300"></div>
+            <span id="status-text" class="font-bold text-slate-500">En attente</span>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+        <!-- Colonne gauche : profil + bouton appel -->
+        <div class="md:col-span-2 bg-white rounded-2xl shadow-sm p-6">
+
+            <!-- Sélecteur variante (visible avant appel) -->
+            <div id="variant-selector" class="mb-6">
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Choisis ton client</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="btn-variant-A" onclick="selectVariant('A')"
+                            class="text-left p-4 rounded-xl border-2 border-blue-500 bg-blue-50 transition-all">
+                        <p class="font-black text-slate-900">Meneer Janssen</p>
+                        <p class="text-[10px] text-slate-400 mt-1 italic">Bienveillant, hartelijk</p>
+                    </button>
+                    <button id="btn-variant-B" onclick="selectVariant('B')"
+                            class="text-left p-4 rounded-xl border-2 border-slate-200 hover:border-blue-300 transition-all">
+                        <p class="font-black text-slate-900">Mevrouw Peeters</p>
+                        <p class="text-[10px] text-slate-400 mt-1 italic">Zacht, geduldig</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Profil actif (visible pendant l'appel) -->
+            <div id="active-profile" class="hidden mb-6 flex items-center gap-4 p-4 bg-blue-50 rounded-xl">
+                <div id="profile-avatar" class="w-14 h-14 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-black text-lg">?</div>
+                <div class="flex-1">
+                    <p id="profile-nom"  class="font-black text-slate-900"></p>
+                    <p id="profile-role" class="text-[11px] text-slate-500"></p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="live-dot"></div>
+                    <span class="text-[10px] font-black text-red-600 uppercase tracking-wider">Live</span>
+                </div>
+            </div>
+
+            <!-- Statut conversation -->
+            <div class="text-center py-4">
+                <p id="state-msg" class="text-sm font-bold text-slate-700">Choisis un client puis lance l'appel.</p>
+                <p id="live-speech" class="text-xs italic text-slate-400 mt-2 min-h-[1rem]"></p>
+                <p id="ai-interim"  class="text-xs italic text-blue-600 mt-1 min-h-[1rem]"></p>
+            </div>
+
+            <!-- Visualiseur + bouton appel -->
+            <div class="flex flex-col items-center justify-center py-6">
+                <div id="visualizer" class="visualizer w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mb-4">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 opacity-90"></div>
+                </div>
+                <button id="btn-call" class="px-6 py-3 rounded-full bg-green-500 hover:bg-green-600 text-white font-black text-sm flex items-center gap-2 shadow-lg transition-all">
+                    <i data-lucide="phone" class="w-4 h-4"></i>
+                    <span id="btn-call-label">Lancer l'appel</span>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Colonne droite : checklist -->
+        <div class="bg-white rounded-2xl shadow-sm p-6">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Champs à collecter</p>
+            <div id="checklist" class="space-y-1.5">
+                <p class="text-[10px] text-slate-300 italic">Lance l'appel pour voir les champs…</p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-100">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-slate-500 font-bold">Progression</span>
+                    <span id="score-txt" class="font-black text-slate-900">0 / —</span>
+                </div>
+                <div class="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="jauge" class="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-[10px] text-slate-400 text-center mt-6">
+        Branche parallèle prototype · <a href="/" class="underline">retour au simulateur classique</a>
+    </p>
+</div>
+
+<script>
+// =====================================================================
+// ÉTAT GLOBAL
+// =====================================================================
+let userName       = '';
+let userGender     = 'M';
+let selectedVariant = 'A';
+let ws             = null;
+let isCalling      = false;
+
+// AudioContext de CAPTURE (16 kHz, AudioWorklet PCM)
+let captureCtx     = null;
+let captureNode    = null;
+
+// AudioContext de LECTURE (24 kHz, scheduling continu via nextPlayTime)
+const PLAYBACK_RATE = 24000;
+let playbackCtx    = null;
+let nextPlayTime   = 0;
+let pcmLeftoverByte = null;   // Buffer 1-octet pour PCM impair (collé au chunk suivant)
+let isPlaying      = false;
+
+let pendingGameOver = null;
+let totalChampsSession = 0;
+
+// =====================================================================
+// MODAL ACCUEIL
+// =====================================================================
+function selectGender(g) {
+    userGender = g;
+    document.getElementById('btn-genre-m').className =
+        'flex-1 py-3 rounded-xl border-2 text-sm font-black transition-all ' +
+        (g === 'M' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-blue-400');
+    document.getElementById('btn-genre-f').className =
+        'flex-1 py-3 rounded-xl border-2 text-sm font-black transition-all ' +
+        (g === 'F' ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-slate-200 text-slate-600 hover:border-pink-400');
+}
+
+function validerAccueil() {
+    const name = document.getElementById('input-username').value.trim();
+    if (!name) {
+        document.getElementById('input-username').focus();
+        document.getElementById('input-username').classList.add('border-red-400');
+        return;
+    }
+    userName = name;
+    document.getElementById('modal-welcome').classList.add('hidden');
+}
+
+// =====================================================================
+// SÉLECTION VARIANTE
+// =====================================================================
+function selectVariant(v) {
+    selectedVariant = v;
+    const A = document.getElementById('btn-variant-A');
+    const B = document.getElementById('btn-variant-B');
+    A.className = 'text-left p-4 rounded-xl border-2 transition-all ' +
+        (v === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-300');
+    B.className = 'text-left p-4 rounded-xl border-2 transition-all ' +
+        (v === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-300');
+}
+
+// =====================================================================
+// CHECKLIST
+// =====================================================================
+function buildChecklist(champs) {
+    const checklist = document.getElementById('checklist');
+    checklist.innerHTML = '';
+    totalChampsSession = champs.length;
+    document.getElementById('score-txt').innerText = `0 / ${totalChampsSession}`;
+
+    champs.forEach(c => {
+        const div = document.createElement('div');
+        div.id = 'champ-' + c.id;
+        div.className = 'champ-item pending flex items-center gap-2';
+        div.innerHTML = `
+            <div class="champ-dot"><span class="champ-check">✓</span></div>
+            <div class="flex flex-col">
+                <span class="font-bold leading-tight">${c.label}</span>
+                <span class="text-[9px] opacity-70">${c.fr}</span>
+            </div>`;
+        checklist.appendChild(div);
+    });
+}
+
+function cocherChamp(id) {
+    const el = document.getElementById('champ-' + id);
+    if (el) { el.classList.remove('pending'); el.classList.add('done'); }
+}
+
+function updateProgress(filled, total) {
+    document.getElementById('jauge').style.width = Math.round((filled / total) * 100) + '%';
+    document.getElementById('score-txt').innerText = `${filled} / ${total}`;
+}
+
+// =====================================================================
+// AUDIO — CAPTURE 16 kHz
+// =====================================================================
+async function setupCapture() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+    });
+    captureCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (captureCtx.state === 'suspended') await captureCtx.resume();
+
+    try {
+        await captureCtx.audioWorklet.addModule('/audio-processor.js?v=' + Date.now());
+    } catch (e) {
+        const isSecure = window.isSecureContext;
+        const host = location.hostname;
+        let hint = '';
+        if (!isSecure) {
+            hint = `\n\n⚠️ Contexte non-sécurisé détecté (hostname="${host}"). L'AudioWorklet exige localhost, 127.0.0.1 ou HTTPS. Si tu accèdes via une IP LAN, ouvre plutôt http://localhost:3001/realtime sur la même machine que le serveur.`;
+        } else {
+            hint = `\n\nSi tu es sur localhost, c'est probablement un cache. Fais un hard refresh : Cmd+Shift+R (Mac) ou Ctrl+Shift+R (Windows/Linux). Vérifie aussi que le serveur node tourne bien sur le port 3001.`;
+        }
+        throw new Error('Impossible de charger audio-processor.js — ' + (e.message || 'AudioWorklet refusé') + hint);
+    }
+    const source = captureCtx.createMediaStreamSource(stream);
+    captureNode = new AudioWorkletNode(captureCtx, 'pcm-processor');
+    source.connect(captureNode);
+    // ⚠️ On NE branche PAS captureNode.connect(destination) pour éviter le larsen
+    // (la lecture passe par playbackCtx séparé)
+
+    captureNode.port.onmessage = (e) => {
+        if (ws?.readyState === WebSocket.OPEN && isCalling && !isPlaying) {
+            ws.send(e.data);  // binary frame
+        }
+    };
+}
+
+// =====================================================================
+// AUDIO — LECTURE 24 kHz (scheduling continu)
+// =====================================================================
+function ensurePlaybackCtx() {
+    if (!playbackCtx) {
+        playbackCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: PLAYBACK_RATE });
+    }
+    if (playbackCtx.state === 'suspended') playbackCtx.resume();
+    if (nextPlayTime < playbackCtx.currentTime) nextPlayTime = playbackCtx.currentTime;
+}
+
+// Décode un chunk base64 PCM 16-bit 24kHz LE et le programme à la suite.
+// Gère l'octet orphelin : si la longueur est impaire, on garde le dernier
+// byte pour le coller au début du chunk suivant.
+function playPCMChunk(base64) {
+    ensurePlaybackCtx();
+    try {
+        const binary = atob(base64);
+        let len = binary.length;
+        let bytes;
+
+        // Préfixer l'éventuel octet orphelin du chunk précédent
+        if (pcmLeftoverByte !== null) {
+            bytes = new Uint8Array(len + 1);
+            bytes[0] = pcmLeftoverByte;
+            for (let i = 0; i < len; i++) bytes[i + 1] = binary.charCodeAt(i);
+            pcmLeftoverByte = null;
+            len = bytes.length;
+        } else {
+            bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        }
+
+        // Si longueur impaire, garder le dernier byte pour le prochain chunk
+        if (len % 2 !== 0) {
+            pcmLeftoverByte = bytes[len - 1];
+            bytes = bytes.subarray(0, len - 1);
+            len -= 1;
+        }
+        if (len === 0) return;
+
+        // Int16 LE → Float32 [-1, 1]
+        const samples = len / 2;
+        const float32 = new Float32Array(samples);
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (let i = 0; i < samples; i++) {
+            float32[i] = view.getInt16(i * 2, true) / 32768;
+        }
+
+        const audioBuffer = playbackCtx.createBuffer(1, samples, PLAYBACK_RATE);
+        audioBuffer.copyToChannel(float32, 0);
+
+        const src = playbackCtx.createBufferSource();
+        src.buffer = audioBuffer;
+        src.connect(playbackCtx.destination);
+
+        const startAt = Math.max(nextPlayTime, playbackCtx.currentTime);
+        src.start(startAt);
+        nextPlayTime = startAt + audioBuffer.duration;
+    } catch (e) {
+        console.warn('⚠️ playPCMChunk error :', e);
+    }
+}
+
+function startSpeaking() {
+    isPlaying = true;
+    document.getElementById('visualizer').classList.add('speaking');
+    pcmLeftoverByte = null;
+}
+
+function endSpeaking() {
+    // On laisse un petit délai pour la queue programmée
+    const remaining = Math.max(0, (nextPlayTime - (playbackCtx?.currentTime || 0)) * 1000) + 50;
+    setTimeout(() => {
+        isPlaying = false;
+        document.getElementById('visualizer').classList.remove('speaking');
+        document.getElementById('state-msg').innerText = "À toi de poser la prochaine question";
+        // Si un game_over était en attente de la fin audio, déclenche le modal
+        if (pendingGameOver) {
+            showGameOverModal(pendingGameOver);
+            pendingGameOver = null;
+        }
+    }, remaining);
+}
+
+// =====================================================================
+// APPEL
+// =====================================================================
+async function startCall() {
+    try {
+        await setupCapture();
+        ensurePlaybackCtx();
+
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(`${protocol}://${window.location.host}/ws-realtime`);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'config',
+                variant: selectedVariant,
+                userName,
+                userGender,
+            }));
+            document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+            document.getElementById('status-text').innerText = 'Initialisation…';
+            document.getElementById('state-msg').innerText = 'Initialisation Gemini Live…';
+        };
+
+        ws.onmessage = (e) => {
+            // Tout vient en JSON (l'audio est encodé en base64 dans audio_chunk)
+            const data = JSON.parse(e.data);
+
+            if (data.type === 'fields_selected') {
+                buildChecklist(data.champs);
+                if (data.profil) {
+                    document.getElementById('profile-nom').innerText  = data.profil.nom;
+                    document.getElementById('profile-role').innerText = data.profil.role;
+                    document.getElementById('profile-avatar').innerText = data.profil.nom?.[0] || '?';
+                }
+            }
+
+            if (data.type === 'ready') {
+                document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+                document.getElementById('status-text').innerText = 'En ligne';
+                document.getElementById('state-msg').innerText = 'Le client va décrocher…';
+                document.getElementById('variant-selector').classList.add('hidden');
+                document.getElementById('active-profile').classList.remove('hidden');
+            }
+
+            if (data.type === 'audio_start') {
+                startSpeaking();
+            }
+            if (data.type === 'audio_chunk') {
+                playPCMChunk(data.value);
+            }
+            if (data.type === 'audio_end') {
+                endSpeaking();
+            }
+
+            if (data.type === 'interim_text') {
+                document.getElementById('live-speech').innerText = (data.value || '') + (data.isFinal ? '' : '…');
+            }
+            if (data.type === 'ai_interim') {
+                document.getElementById('ai-interim').innerText = data.value || '';
+            }
+            if (data.type === 'turn_complete') {
+                document.getElementById('live-speech').innerText = '';
+                document.getElementById('ai-interim').innerText  = '';
+            }
+
+            if (data.type === 'ai_response') {
+                if (data.champRempli) cocherChamp(data.champRempli);
+                const filled = data.champsRemplis?.length || 0;
+                const total  = data.totalChamps || totalChampsSession;
+                updateProgress(filled, total);
+            }
+
+            if (data.type === 'goodbye_phase') {
+                document.getElementById('state-msg').innerText = "✅ Dossier complet — prends congé en NL !";
+            }
+
+            if (data.type === 'game_over') {
+                isCalling = false;
+                if (isPlaying) {
+                    pendingGameOver = data;
+                } else {
+                    showGameOverModal(data);
+                }
+            }
+
+            // Le WS Gemini Live a fermé inopinément (typiquement code=1011
+            // "service unavailable" sur les modèles preview). Le serveur a
+            // déclenché automatiquement le débrief de secours avec l'historique.
+            if (data.type === 'live_disconnected') {
+                console.warn(`Live disconnected code=${data.code} reason="${data.reason}"`);
+                document.getElementById('state-msg').innerText =
+                    '📡 Service Google instable — on prépare ton débrief de secours…';
+            }
+
+            if (data.type === 'error') {
+                console.error('Erreur serveur :', data.value);
+                document.getElementById('state-msg').innerText = '❌ Erreur serveur — recharge la page.';
+            }
+        };
+
+        ws.onerror = (e) => console.error('WS error :', e);
+        ws.onclose = () => {
+            document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-slate-300';
+            document.getElementById('status-text').innerText = 'Déconnecté';
+        };
+
+    } catch (err) {
+        alert('Erreur micro : ' + err.message);
+        isCalling = false;
+    }
+}
+
+// =====================================================================
+// BOUTON APPEL
+// =====================================================================
+const btnCall = document.getElementById('btn-call');
+btnCall.onclick = () => {
+    if (!isCalling) {
+        isCalling = true;
+        document.getElementById('btn-call-label').innerText = 'Arrêter';
+        btnCall.className = 'px-6 py-3 rounded-full bg-red-500 hover:bg-red-600 text-white font-black text-sm flex items-center gap-2 shadow-lg transition-all';
+        startCall();
+    } else {
+        // Demande de débrief, fermeture WS quand modal s'affiche (PAS avant)
+        if (ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'stop' }));
+        }
+        document.getElementById('state-msg').innerText = 'Génération du débrief…';
+    }
+};
+
+// =====================================================================
+// MODAL DÉBRIEF (calque la structure de showGameOverModal d'index.html)
+// =====================================================================
+function showGameOverModal(data) {
+    if (userName) document.getElementById('debrief-title').innerText = `Bravo ${userName} ! 🎉`;
+    document.getElementById('modal-debrief').classList.replace('hidden', 'flex');
+
+    // Ferme proprement le WS maintenant que le modal est affiché
+    if (ws?.readyState === WebSocket.OPEN) {
+        try { ws.close(); } catch {}
+    }
+
+    const d = data.debrief;
+    if (!d) {
+        const reason = data.debriefError
+            ? `<p class="text-rose-700 text-[11px] mt-2 leading-relaxed">${data.debriefError}</p>
+               <p class="text-slate-500 text-[10px] mt-3 italic">L'API Gemini est probablement en panne temporaire (les modèles preview de Google sont parfois instables). Réessaie dans quelques minutes — tes prochaines sessions seront analysées normalement.</p>`
+            : `<p class="text-slate-400 italic">Analyse non générée.</p>`;
+        document.getElementById('debrief-body').innerHTML =
+            `<div class="rounded-xl p-4 bg-rose-50">
+                <p class="text-[9px] font-black uppercase tracking-widest mb-2 text-rose-600">⚠️ Débrief indisponible</p>
+                ${reason}
+                <p class="text-slate-600 text-[11px] mt-3">Mais bonne nouvelle : ${data.champsRemplis?.length || 0} / ${data.totalChamps || '?'} champs collectés pendant l'appel. 👍</p>
+            </div>`;
+        return;
+    }
+
+    const section = (emoji, titre, couleur, contenu) =>
+        `<div class="rounded-xl p-4 ${couleur}">
+            <p class="text-[9px] font-black uppercase tracking-widest mb-2 opacity-60">${emoji} ${titre}</p>
+            ${contenu}
+        </div>`;
+
+    const listItems = (arr, fn) => arr && arr.length
+        ? `<ul class="space-y-1.5">${arr.map(fn).join('')}</ul>`
+        : `<p class="italic opacity-50">Aucune erreur relevée 👍</p>`;
+
+    let html = '';
+
+    if (d.encouragement) html += section('💬', 'Encouragement', 'bg-emerald-50',
+        `<p class="text-emerald-800 font-semibold">${d.encouragement}</p>`);
+
+    if (d.points_forts?.length) html += section('✅', 'Points forts', 'bg-green-50',
+        `<ul class="space-y-1">${d.points_forts.map(p =>
+            `<li class="flex gap-2"><span class="text-green-500 shrink-0">✓</span><span class="text-green-800 font-semibold">${p}</span></li>`
+        ).join('')}</ul>`);
+
+    html += section('📝', 'Grammaire', 'bg-orange-50',
+        listItems(d.grammaire, g =>
+            `<li class="bg-white rounded-lg p-2.5 border border-orange-100">
+                <p class="text-red-500 line-through text-[10px]">${g.erreur}</p>
+                <p class="text-green-600 font-black text-[11px] mt-0.5">→ ${g.correction}</p>
+                <p class="text-slate-500 text-[10px] mt-0.5 italic">${g.explication}</p>
+            </li>`
+        ));
+
+    html += section('🔤', 'Conjugaison', 'bg-purple-50',
+        listItems(d.conjugaison, c =>
+            `<li class="bg-white rounded-lg p-2.5 border border-purple-100">
+                <p class="text-red-500 line-through text-[10px]">${c.erreur}</p>
+                <p class="text-green-600 font-black text-[11px] mt-0.5">→ ${c.correction}</p>
+                <p class="text-slate-500 text-[10px] mt-0.5 italic">${c.explication}</p>
+            </li>`
+        ));
+
+    if (d.vocabulaire?.length) html += section('📚', 'Vocabulaire à retenir', 'bg-blue-50',
+        `<ul class="space-y-1.5">${d.vocabulaire.map(v =>
+            `<li class="bg-white rounded-lg p-2.5 border border-blue-100">
+                <p class="font-black text-blue-700 text-[12px]">${v.mot_nl} <span class="text-slate-400 font-normal text-[10px]">— ${v.traduction}</span></p>
+                <p class="text-slate-500 text-[10px] italic mt-0.5">${v.exemple}</p>
+            </li>`
+        ).join('')}</ul>`);
+
+    if (d.prononciation) {
+        // Gère 2 formats :
+        //  - string  (legacy / fallback texte-only)
+        //  - object  { global: "...", erreurs: [{ mot, probleme, conseil }, ...] }  (multimodal)
+        let pronoHtml;
+        if (typeof d.prononciation === 'string') {
+            pronoHtml = `<p class="text-yellow-900">${d.prononciation}</p>`;
+        } else {
+            const g  = d.prononciation.global || '';
+            const er = Array.isArray(d.prononciation.erreurs) ? d.prononciation.erreurs : [];
+            pronoHtml = `
+                ${g ? `<p class="text-yellow-900 mb-2">${g}</p>` : ''}
+                ${er.length ? `<ul class="space-y-1.5">${er.map(e => `
+                    <li class="bg-white rounded-lg p-2.5 border border-yellow-100">
+                        <p class="font-black text-yellow-800 text-[12px]">${e.mot || ''}</p>
+                        <p class="text-slate-600 text-[10px] mt-0.5">${e.probleme || ''}</p>
+                        <p class="text-green-700 text-[10px] italic mt-0.5">→ ${e.conseil || ''}</p>
+                    </li>`).join('')}</ul>` : ''}
+            `;
+        }
+        html += section('🗣️', 'Accent & Prononciation', 'bg-yellow-50', pronoHtml);
+    }
+
+    if (d.phrase_modele) html += section('💡', 'Phrase modèle', 'bg-slate-100',
+        `<p class="text-blue-700 font-black text-[13px] italic">"${d.phrase_modele}"</p>`);
+
+    document.getElementById('debrief-body').innerHTML = html;
+}
+
+// Initialise les icônes Lucide
+window.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+</script>
+</body>
+</html>

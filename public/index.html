@@ -49,6 +49,11 @@
             to   { opacity: 1; transform: translateY(0); }
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+        /* Mode écoute pure — texte client flouté */
+        .client-blurred { filter: blur(7px); user-select: none; transition: filter 0.3s ease; cursor: pointer; }
+        .client-blurred:hover { filter: blur(4px); }
+        .client-reveal { filter: none !important; transition: filter 0.2s ease; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -164,15 +169,19 @@
 
             <!-- Zone réponse client -->
             <div class="w-full bg-slate-50 rounded-2xl p-4 min-h-[64px] border border-slate-100">
-                <p class="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Client répond (NL) :</p>
-                <p id="client-response" class="text-sm font-semibold text-slate-700 italic leading-relaxed">—</p>
+                <div class="flex items-center justify-between mb-1">
+                    <p class="text-[8px] font-black text-blue-400 uppercase tracking-widest">Client répond (NL) :</p>
+                    <button id="btn-listen-mode" onclick="toggleListenMode()"
+                        class="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition-all bg-slate-200 text-slate-500 hover:bg-blue-100 hover:text-blue-600"
+                        title="Mode écoute : cacher le texte pour comprendre sans lire">
+                        <i data-lucide="eye" class="w-3 h-3" id="listen-icon"></i>
+                        <span id="listen-label">Masquer</span>
+                    </button>
+                </div>
+                <p id="client-response" class="text-sm font-semibold text-slate-700 italic leading-relaxed" onclick="revealOnClick(this)">—</p>
             </div>
 
-            <!-- Historique des 4 derniers échanges -->
-            <div id="chat-history" class="hidden w-full mt-3">
-                <p class="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1.5">4 derniers échanges</p>
-                <div id="chat-log" class="space-y-1.5 max-h-40 overflow-y-auto hide-scrollbar"></div>
-            </div>
+            <!-- Historique supprimé — mode écoute pure -->
 
             <!-- Bulle de correction -->
             <div id="correction-zone" class="hidden w-full mt-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 correction-bubble">
@@ -235,12 +244,19 @@
 
 <!-- ═══ MODAL DÉBRIEF ═══ -->
 <div id="modal-debrief" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-[2rem] w-full max-w-lg p-8 shadow-2xl border-t-8 border-t-blue-500 text-center">
-        <div class="text-5xl mb-4">🎓</div>
-        <h2 id="debrief-title" class="text-xl font-black text-slate-900 mb-2 tracking-tight">Dossier Complété !</h2>
-        <p class="text-xs text-slate-400 mb-4">Feedback sur ton néerlandais</p>
-        <div id="debrief-body" class="text-left bg-slate-50 p-5 rounded-xl text-xs leading-relaxed text-slate-600 space-y-3 mb-6"></div>
-        <button onclick="location.reload()" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 transition-colors">Recommencer</button>
+    <div class="bg-white rounded-[2rem] w-full max-w-2xl shadow-2xl border-t-8 border-t-blue-500 flex flex-col max-h-[90vh]">
+        <!-- En-tête fixe -->
+        <div class="text-center px-8 pt-8 pb-4 shrink-0">
+            <div class="text-5xl mb-3">🎓</div>
+            <h2 id="debrief-title" class="text-xl font-black text-slate-900 tracking-tight">Dossier Complété !</h2>
+            <p class="text-xs text-slate-400 mt-1">Analyse de ton néerlandais</p>
+        </div>
+        <!-- Corps scrollable -->
+        <div id="debrief-body" class="overflow-y-auto px-8 pb-4 space-y-4 text-xs text-slate-600 leading-relaxed flex-1"></div>
+        <!-- Bouton fixe en bas -->
+        <div class="px-8 pb-8 pt-4 shrink-0">
+            <button onclick="location.reload()" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 transition-colors">🔄 Nouvel appel</button>
+        </div>
     </div>
 </div>
 
@@ -277,118 +293,290 @@
         zelfstandige: "Tu es zelfstandige. Pour beroep_type : réponds 'zelfstandige'. Pour maandinkomen : tu peux indiquer un revenu approximatif (varie entre 1800-3500€). Pour bewijs_inkomen : accepte d'envoyer l'aanslagbiljet (avertissement extrait de rôle) de la dernière année fiscale.",
     };
 
-    const PROFILES = [
+    // ==========================================
+    // LEVEL CONFIGS — 2 variantes par niveau, tirée au sort à chaque sélection
+    // ==========================================
+    const LEVEL_CONFIGS = [
         {
-            niveau: 1, nom: 'Meneer Janssen', role: 'Gepensioneerde · Gent',
-            age: '67 ans', situation: 'Marié', ville: 'Gent', beroep: 'Gepensioneerd',
+            niveau: 1,
             voiceId: 'wqDY19Brqhu7UCoLadPh',
             voiceSettings: { stability: 0.35, similarity_boost: 0.90, style: 0.25, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=JJ&background=dbeafe&color=1d4ed8',
-            desc: "Très lent et clair. Prononciation standard. Idéal pour débuter.",
-            champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
-            prompt: "Meneer Janssen, 67 ans, gepensioneerd à Gent. Marié. Demande de crédit voiture chez Cofidis. Parle très lentement et clairement, prononciation standard belge. Très coopératif.",
-            situationProInstructie: SIT.gepensioneerd,
+            desc: "Très lent et clair. Ultra-patient. Idéal pour débuter.",
+            comportementInstructie: "NIVEAU 1 — TRÈS BIENVEILLANT : Parle très lentement, articule bien. Si le conseiller hésite ou formule maladroitement, attends patiemment. Si question vraiment trop floue, propose 'Bedoelt u misschien...?' Parle encore plus doucement si le conseiller semble non-néerlandophone.",
+            variants: [
+                {
+                    nom: 'Meneer Janssen', role: 'Gepensioneerde · Gent',
+                    age: '67 ans', situation: 'Marié', ville: 'Gent', beroep: 'Gepensioneerd',
+                    image: 'https://ui-avatars.com/api/?name=JJ&background=dbeafe&color=1d4ed8',
+                    champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Meneer Janssen, 67 ans, gepensioneerd à Gent. Marié. Crédit voiture chez Cofidis. Parle très lentement, prononciation standard belge.",
+                    situationProInstructie: SIT.gepensioneerd,
+                    humeurInstructie: "Tu es un grand-père bienveillant, chaleureux. Tu peux mentionner tes petits-enfants ponctuellement si c'est naturel. Si le conseiller fait une longue pause, dis doucement 'Neemt u gerust uw tijd, hoor.' Jamais de remarques négatives.",
+                },
+                {
+                    nom: 'Mevrouw Peeters', role: 'Gepensioneerde · Leuven',
+                    age: '72 ans', situation: 'Veuve', ville: 'Leuven', beroep: 'Gepensioneerd',
+                    image: 'https://ui-avatars.com/api/?name=MP&background=dbeafe&color=1d4ed8',
+                    champsIds: ['naam','adres','geboortedatum','rijksregisternummer','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Peeters, 72 ans, gepensioneerde à Leuven. Veuve. Crédit rénovation chez Cofidis. Parle très lentement, voix douce.",
+                    situationProInstructie: SIT.gepensioneerd,
+                    humeurInstructie: "Tu es une grand-mère douce et patiente. Tu entends un peu moins bien, donc tu peux dire 'Hoe zei u dat?' de temps en temps. Si le conseiller hésite, tu encourages : 'Neemt u uw tijd, ik luister.' Très bienveillante.",
+                },
+            ],
         },
         {
-            niveau: 2, nom: 'Mevrouw De Smedt', role: 'Verpleegkundige · Leuven',
-            age: '34 ans', situation: 'Célibataire', ville: 'Leuven', beroep: 'Verpleegkundige',
+            niveau: 2,
             voiceId: 'gC9jy9VUxaXAswovchvQ',
             voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=MD&background=dcfce7&color=166534',
-            desc: "Vitesse normale. Sympa, pose parfois une petite question.",
-            champsIds: ['naam','adres','geboortedatum','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Mevrouw De Smedt, 34 ans, verpleegkundige (bediende) à Leuven. Célibataire. Demande de crédit chez Cofidis. Parle à vitesse normale, pronunciation claire. Coopérative, peut poser une question ponctuelle.",
-            situationProInstructie: SIT.bediende('1900-2350€'),
+            desc: "Vitesse normale. Sympa, légèrement taquin(e).",
+            comportementInstructie: "NIVEAU 2 — BIENVEILLANT : Vitesse normale, ton chaleureux. Si question imprécise, demande 'Wat bedoelt u precies?' Si le conseiller hésite, attends gentiment.",
+            variants: [
+                {
+                    nom: 'Mevrouw De Smedt', role: 'Verpleegkundige · Leuven',
+                    age: '34 ans', situation: 'Célibataire', ville: 'Leuven', beroep: 'Verpleegkundige',
+                    image: 'https://ui-avatars.com/api/?name=MD&background=dcfce7&color=166534',
+                    champsIds: ['naam','adres','geboortedatum','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw De Smedt, 34 ans, verpleegkundige à Leuven. Célibataire. Crédit chez Cofidis. Vitesse normale, prononciation claire.",
+                    situationProInstructie: SIT.bediende('1900-2350€'),
+                    humeurInstructie: "Tu es sympa et souriante. Tu peux glisser une remarque légère sur ta charge de travail ('Als verpleegkundige hebben we altijd het druk!'). Si le conseiller fait une petite erreur de néerlandais mais compréhensible, tu réponds normalement sans le souligner.",
+                },
+                {
+                    nom: 'Meneer Goossens', role: 'Bediende · Antwerpen',
+                    age: '29 ans', situation: 'Célibataire', ville: 'Antwerpen', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=TG&background=dcfce7&color=166534',
+                    champsIds: ['naam','adres','burgerlijke_staat','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Goossens, 29 ans, bediende à Antwerpen. Célibataire. Crédit chez Cofidis. Vitesse normale, décontracté.",
+                    situationProInstructie: SIT.bediende('1850-2200€'),
+                    humeurInstructie: "Tu es décontracté et sympa, tu dis parfois 'ah ja', 'oké oké', 'geen probleem'. Si le conseiller pose une question vraiment maladroite, tu peux taquiner gentiment : 'Haha, da was een grappige vraag!' — toujours bienveillant.",
+                },
+            ],
         },
         {
-            niveau: 3, nom: 'Meneer Maes', role: 'Bediende · Brussel',
-            age: '43 ans', situation: 'Marié, 2 enfants', ville: 'Brussel', beroep: 'Bediende',
+            niveau: 3,
             voiceId: 'ruSJRhA64v8HAqiqKXVw',
             voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=TM&background=e0e7ff&color=3730a3',
-            desc: "Vitesse normale, léger accent bruxellois. Coopératif.",
-            champsIds: ['naam','adres','burgerlijke_staat','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Meneer Maes, 43 ans, bediende à Brussel. Marié, 2 enfants. Demande de crédit renovation chez Cofidis. Parle à vitesse normale avec un léger accent bruxellois. Coopératif.",
-            situationProInstructie: SIT.bediende('2100-2600€'),
+            desc: "Vitesse normale, léger accent bruxellois. Humour belge.",
+            comportementInstructie: "NIVEAU 3 — NEUTRE-BIENVEILLANT : Coopératif(ve) mais tu ne facilites pas le travail du conseiller. Question floue → tu la prends au pied de la lettre.",
+            variants: [
+                {
+                    nom: 'Meneer Maes', role: 'Bediende · Brussel',
+                    age: '43 ans', situation: 'Marié, 2 enfants', ville: 'Brussel', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=TM&background=e0e7ff&color=3730a3',
+                    champsIds: ['naam','adres','burgerlijke_staat','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Maes, 43 ans, bediende à Brussel. Marié, 2 enfants. Crédit rénovation chez Cofidis. Vitesse normale, léger accent bruxellois.",
+                    situationProInstructie: SIT.bediende('2100-2600€'),
+                    humeurInstructie: "Tu es un Bruxellois jovial. Tu peux glisser une blague légère sur la paperasse ('ha, typisch Cofidis!'). Tu peux taquiner gentiment le conseiller si sa question est clairement maladroite mais compréhensible. Tu utilises parfois 'bon' ou 'voilà'.",
+                },
+                {
+                    nom: 'Mevrouw Nijs', role: 'HR Manager · Brussel',
+                    age: '38 ans', situation: 'Mariée', ville: 'Brussel', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=CN&background=e0e7ff&color=3730a3',
+                    champsIds: ['naam','adres','geboortedatum','kredietdoel','burgerlijke_staat','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Nijs, 38 ans, HR manager (bediende) à Brussel. Mariée. Crédit chez Cofidis. Professionnelle, vitesse normale.",
+                    situationProInstructie: SIT.bediende('2300-2800€'),
+                    humeurInstructie: "Tu es professionnelle et efficace, ton neutre. Tu réponds directement sans bavardage inutile. Si le conseiller pose une très bonne question en néerlandais, tu peux dire 'Goed gevraagd.' avec bienveillance.",
+                },
+            ],
         },
         {
-            niveau: 4, nom: 'Mevrouw Claes', role: 'Zelfstandige · Hasselt',
-            age: '48 ans', situation: 'Mariée', ville: 'Hasselt', beroep: 'Zelfstandige',
+            niveau: 4,
             voiceId: 'HAAKLJlaJeGl18MKHYeg',
             voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=IC&background=fef3c7&color=92400e',
-            desc: "Parle assez vite. Accent limbourgeois léger. Hésitante sur certains chiffres.",
-            champsIds: ['naam','adres','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
-            prompt: "Mevrouw Claes, 48 ans, zelfstandige (commerce) à Hasselt. Mariée. Demande de crédit chez Cofidis. Parle assez vite avec un accent limbourgeois léger. Hésitante sur les chiffres (revenu variable), mais coopérative.",
-            situationProInstructie: SIT.zelfstandige,
+            desc: "Assez vite, accent limbourgeois léger. Neutre.",
+            comportementInstructie: "NIVEAU 4 — NEUTRE : Assez vite, ni froid ni chaleureux. Hésites parfois sur les chiffres. Question floue → tu l'interprètes à ta façon sans clarifier.",
+            variants: [
+                {
+                    nom: 'Mevrouw Claes', role: 'Zelfstandige · Hasselt',
+                    age: '48 ans', situation: 'Mariée', ville: 'Hasselt', beroep: 'Zelfstandige',
+                    image: 'https://ui-avatars.com/api/?name=IC&background=fef3c7&color=92400e',
+                    champsIds: ['naam','adres','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Mevrouw Claes, 48 ans, zelfstandige (commerce) à Hasselt. Mariée. Crédit chez Cofidis. Assez vite, accent limbourgeois léger.",
+                    situationProInstructie: SIT.zelfstandige,
+                    humeurInstructie: "Tu es un peu stressée par ta vie d'indépendante. Tu soupires parfois ('Ugh, nog meer papieren...'). Tu peux faire une remarque légère sur la paperasse, mais tu restes coopérative car tu veux ton crédit.",
+                },
+                {
+                    nom: 'Meneer Leclercq', role: 'Bediende · Tongeren',
+                    age: '52 ans', situation: 'Divorcé', ville: 'Tongeren', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=RL&background=fef3c7&color=92400e',
+                    champsIds: ['naam','adres','geboortedatum','burgerlijke_staat','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Leclercq, 52 ans, bediende à Tongeren. Divorcé. Crédit chez Cofidis. Assez vite, léger accent limbourgeois.",
+                    situationProInstructie: SIT.bediende('2000-2400€'),
+                    humeurInstructie: "Tu es jovial et un peu vieux jeu. Tu peux faire une blague sur ton âge ('op mijn leeftijd...') ou sur le divorce ('da kost ook veel, een scheiding!'). Bienveillant mais tu ne facilites pas.",
+                },
+            ],
         },
         {
-            niveau: 5, nom: 'Meneer Pieters', role: 'Arbeider · Antwerpen',
-            age: '38 ans', situation: 'Marié, 3 enfants', ville: 'Antwerpen', beroep: 'Arbeider',
+            niveau: 5,
             voiceId: 'WLKp2jV6nrS8aMkPPDRO',
             voiceSettings: { stability: 0.50, similarity_boost: 0.80, style: 0.25, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=KP&background=fee2e2&color=991b1b',
-            desc: "Accent anversois. Parle vite par moments. Direct et bref dans ses réponses.",
-            champsIds: ['naam','adres','geboortedatum','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Meneer Pieters, 38 ans, arbeider à Anvers. Marié, 3 enfants. Demande de crédit chez Cofidis. Parle avec un accent anversois prononcé, assez vite, réponses directes et courtes. Coopératif mais pas bavard.",
-            situationProInstructie: SIT.arbeider,
+            desc: "Accent anversois. Direct, bref. Peut piquer.",
+            comportementInstructie: "NIVEAU 5 — PEU PATIENT : Direct et bref, réponses courtes. Question mal posée → 'Wat?' d'un ton neutre. Tu ne facilites pas.",
+            variants: [
+                {
+                    nom: 'Meneer Pieters', role: 'Arbeider · Antwerpen',
+                    age: '38 ans', situation: 'Marié, 3 enfants', ville: 'Antwerpen', beroep: 'Arbeider',
+                    image: 'https://ui-avatars.com/api/?name=KP&background=fee2e2&color=991b1b',
+                    champsIds: ['naam','adres','geboortedatum','kinderen_ten_laste','kredietbedrag','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Pieters, 38 ans, arbeider à Anvers. Marié, 3 enfants. Crédit chez Cofidis. Accent anversois, vite, réponses courtes.",
+                    situationProInstructie: SIT.arbeider,
+                    humeurInstructie: "Tu es direct et anversois. Tu peux sortir une expression anversoise ('alleze', 'da weet ik nie'). Si le conseiller hésite vraiment trop, tu peux dire sèchement 'Gaat ge nog iets vragen?' Tu n'es pas méchant mais tu n'as pas de temps à perdre.",
+                },
+                {
+                    nom: 'Mevrouw Bogaert', role: 'Bediende · Mechelen',
+                    age: '45 ans', situation: 'Mariée, 1 enfant', ville: 'Mechelen', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=AB&background=fee2e2&color=991b1b',
+                    champsIds: ['naam','adres','rijksregisternummer','burgerlijke_staat','kinderen_ten_laste','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Bogaert, 45 ans, bediende à Mechelen. Mariée, 1 enfant. Crédit chez Cofidis. Assez vite, mère occupée.",
+                    situationProInstructie: SIT.bediende('2000-2450€'),
+                    humeurInstructie: "Tu es une mère occupée, légèrement pressée. Tu peux glisser 'ik moet straks mijn kind ophalen'. Réponses correctes mais courtes. Si le conseiller s'étire trop, tu peux dire 'Allee, schiet wat op, ik heb het druk.'",
+                },
+            ],
         },
         {
-            niveau: 6, nom: 'Mevrouw Wouters', role: 'Werkloze · Gent',
-            age: '29 ans', situation: 'Célibataire, 1 enfant', ville: 'Gent', beroep: 'Werkloze',
+            niveau: 6,
             voiceId: 'MiueK1FXuZTCItgbQwPu',
             voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.30, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=SW&background=f3e8ff&color=6b21a8',
-            desc: "Parle vite, expressions gantaises. Parfois hésitante, demande des clarifications.",
-            champsIds: ['naam','adres','burgerlijke_staat','rijksregisternummer','kinderen_ten_laste','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Mevrouw Wouters, 29 ans, werkloze à Gent. Célibataire avec 1 enfant. Demande de crédit chez Cofidis. Parle vite avec un accent gantois et des expressions locales ('da', 'ge'). Pose parfois des questions de clarification.",
-            situationProInstructie: SIT.werkloze,
+            desc: "Vite, expressions gantaises. Taquine sur le néerlandais.",
+            comportementInstructie: "NIVEAU 6 — ASSEZ DIFFICILE : Vite, accent gantois. Question mal formulée → 'Sorry, wat zei u?' sans aider. Silence trop long → 'Hallo? Bent u er nog?'",
+            variants: [
+                {
+                    nom: 'Mevrouw Wouters', role: 'Werkloze · Gent',
+                    age: '29 ans', situation: 'Célibataire, 1 enfant', ville: 'Gent', beroep: 'Werkloze',
+                    image: 'https://ui-avatars.com/api/?name=SW&background=f3e8ff&color=6b21a8',
+                    champsIds: ['naam','adres','burgerlijke_staat','rijksregisternummer','kinderen_ten_laste','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Wouters, 29 ans, werkloze à Gent. Célibataire, 1 enfant. Crédit chez Cofidis. Vite, accent gantois, expressions locales.",
+                    situationProInstructie: SIT.werkloze,
+                    humeurInstructie: "Tu es jeune et décontractée, expressions gantaises ('da', 'ge', 'allee', 'tis goed'). Tu peux taquiner le conseiller si sa question est bizarre : 'Allee, da is toch een rare vraag zeker?' de façon légère.",
+                },
+                {
+                    nom: 'Meneer Van Acker', role: 'Werkloze · Gent',
+                    age: '33 ans', situation: 'Célibataire', ville: 'Gent', beroep: 'Werkloze',
+                    image: 'https://ui-avatars.com/api/?name=VA&background=f3e8ff&color=6b21a8',
+                    champsIds: ['naam','adres','geboortedatum','kredietbedrag','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Van Acker, 33 ans, werkloze à Gent. Célibataire. Crédit chez Cofidis. Vite, expressions gantaises.",
+                    situationProInstructie: SIT.werkloze,
+                    humeurInstructie: "Tu es décontracté, expressions gantaises. Si le conseiller fait une grosse erreur de néerlandais, tu peux dire avec humour : 'Haha, uw Nederlands is niet zo goed zeker?' — sympathique, jamais méchant.",
+                },
+            ],
         },
         {
-            niveau: 7, nom: 'Meneer Hermans', role: 'Arbeidsongeschikt · Liège',
-            age: '54 ans', situation: 'Divorcé', ville: 'Liège', beroep: 'Arbeidsongeschikt',
+            niveau: 7,
             voiceId: 'o3Pmyfc3Ez1s2CJKuwJf',
             voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.30, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=PH&background=fce7f3&color=9d174d',
-            desc: "Accent liégeois en NL. Hésitations fréquentes. Difficile à suivre.",
-            champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
-            prompt: "Meneer Hermans, 54 ans, arbeidsongeschikt (invalide) à Liège. Divorcé. Demande de crédit chez Cofidis. Parle néerlandais avec un accent liégeois prononcé, hésitations fréquentes, phrases parfois incomplètes. Coopératif mais fatigué.",
-            situationProInstructie: SIT.invalide,
+            desc: "Accent liégeois fort. Hésitations. Fatigué(e).",
+            comportementInstructie: "NIVEAU 7 — DIFFICILE : Hésites souvent, phrases parfois incomplètes. Question mal posée → tu peux répondre à côté. Répétition → 'Maar dat heb ik al gezegd toch?'",
+            variants: [
+                {
+                    nom: 'Meneer Hermans', role: 'Arbeidsongeschikt · Liège',
+                    age: '54 ans', situation: 'Divorcé', ville: 'Liège', beroep: 'Arbeidsongeschikt',
+                    image: 'https://ui-avatars.com/api/?name=PH&background=fce7f3&color=9d174d',
+                    champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Meneer Hermans, 54 ans, arbeidsongeschikt à Liège. Divorcé. Crédit chez Cofidis. Accent liégeois fort, hésitations, fatigué.",
+                    situationProInstructie: SIT.invalide,
+                    humeurInstructie: "Tu es fatigué(e) et un peu las(se). Tu soupires parfois ('ugh...'). Tu peux dire 'Dat duurt toch lang zo' si l'appel traîne. Ton accent liégeois est fort, tes phrases parfois incomplètes.",
+                },
+                {
+                    nom: 'Mevrouw Simon', role: 'Arbeidsongeschikte · Verviers',
+                    age: '49 ans', situation: 'Mariée', ville: 'Verviers', beroep: 'Arbeidsongeschikt',
+                    image: 'https://ui-avatars.com/api/?name=MS&background=fce7f3&color=9d174d',
+                    champsIds: ['naam','adres','rijksregisternummer','burgerlijke_staat','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Mevrouw Simon, 49 ans, arbeidsongeschikt à Verviers. Mariée. Crédit chez Cofidis. Accent liégeois, mélancolique.",
+                    situationProInstructie: SIT.invalide,
+                    humeurInstructie: "Tu es mélancolique et parfois découragée. Tu peux soupirer et dire 'Ja, het is niet makkelijk...' Si le conseiller hésite, tu es compréhensive : 'Neemt u de tijd, ik wacht.' Accent liégeois prononcé.",
+                },
+            ],
         },
         {
-            niveau: 8, nom: 'Mevrouw Stevens', role: 'Bediende · Kortrijk',
-            age: '41 ans', situation: 'Mariée', ville: 'Kortrijk', beroep: 'Bediende',
+            niveau: 8,
             voiceId: 'pjcYQlDFKMbcOUp6F5GD',
             voiceSettings: { stability: 0.45, similarity_boost: 0.80, style: 0.35, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=AS&background=ecfdf5&color=065f46',
-            desc: "Fort accent ouest-flamand. Parle vite. Réponses très courtes.",
-            champsIds: ['naam','adres','rijksregisternummer','burgerlijke_staat','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Mevrouw Stevens, 41 ans, bediende à Kortrijk. Mariée. Demande de crédit chez Cofidis. Parle très vite avec un fort accent ouest-flamand ('da', 'ge', diphtongues). Réponses courtes, peu bavarde.",
-            situationProInstructie: SIT.bediende('2000-2500€'),
+            desc: "Fort accent west-flamand. Très vite. Réponses minimales.",
+            comportementInstructie: "NIVEAU 8 — TRÈS DIFFICILE : Réponses ultra-courtes. Fort accent west-flamand. Question maladroite → 'Juist.' ou 'Ja.' sans vérifier si c'était bien ça.",
+            variants: [
+                {
+                    nom: 'Mevrouw Stevens', role: 'Bediende · Kortrijk',
+                    age: '41 ans', situation: 'Mariée', ville: 'Kortrijk', beroep: 'Bediende',
+                    image: 'https://ui-avatars.com/api/?name=AS&background=ecfdf5&color=065f46',
+                    champsIds: ['naam','adres','rijksregisternummer','burgerlijke_staat','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Stevens, 41 ans, bediende à Kortrijk. Mariée. Crédit chez Cofidis. Très vite, fort accent west-flamand.",
+                    situationProInstructie: SIT.bediende('2000-2500€'),
+                    humeurInstructie: "Tu es très efficace et peu bavarde. Expressions west-flamandes ('allee', 'da', 'ge'). Si ça va trop lentement, tu peux dire 'Allee, schiet wat op, ik heb het druk.' Directe sans être hostile.",
+                },
+                {
+                    nom: 'Meneer Desmet', role: 'Zelfstandige · Roeselare',
+                    age: '36 ans', situation: 'Marié, 2 enfants', ville: 'Roeselare', beroep: 'Zelfstandige',
+                    image: 'https://ui-avatars.com/api/?name=JD&background=ecfdf5&color=065f46',
+                    champsIds: ['naam','adres','geboortedatum','kredietbedrag','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Meneer Desmet, 36 ans, zelfstandige à Roeselare. Marié, 2 enfants. Crédit chez Cofidis. Très vite, fort accent west-flamand, entrepreneur pressé.",
+                    situationProInstructie: SIT.zelfstandige,
+                    humeurInstructie: "Tu es un entrepreneur pressé. Tu peux dire 'Ik heb niet veel tijd' dès le début. Réponses très courtes. Tu n'adaptes pas ta vitesse. Fort accent west-flamand.",
+                },
+            ],
         },
         {
-            niveau: 9, nom: 'Meneer Dubois', role: 'Gepensioneerde · Tongeren',
-            age: '64 ans', situation: 'Veuf', ville: 'Tongeren', beroep: 'Gepensioneerd',
+            niveau: 9,
             voiceId: 'PrYUlaJFEdOSVy6jaEaG',
             voiceSettings: { stability: 0.40, similarity_boost: 0.85, style: 0.40, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=RD&background=fff7ed&color=9a3412',
-            desc: "Fort accent limbourgeois. Diphtongues typiques. Très difficile à suivre.",
-            champsIds: ['naam','adres','geboortedatum','rijksregisternummer','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
-            prompt: "Meneer Dubois, 64 ans, gepensioneerd à Tongeren. Veuf. Demande de crédit chez Cofidis. Parle avec un fort accent limbourgeois (diphtongues, intonation chantante typique). Coopératif mais son accent rend la compréhension difficile.",
-            situationProInstructie: SIT.gepensioneerd,
+            desc: "Fort accent limbourgeois. Sarcastique. Très difficile.",
+            comportementInstructie: "NIVEAU 9 — TRÈS DIFFICILE : Fort accent limbourgeois. Répétition → 'Da heb ik toch al gezegd?' agacé. Tu n'adaptes pas ta vitesse.",
+            variants: [
+                {
+                    nom: 'Meneer Dubois', role: 'Gepensioneerde · Tongeren',
+                    age: '64 ans', situation: 'Veuf', ville: 'Tongeren', beroep: 'Gepensioneerd',
+                    image: 'https://ui-avatars.com/api/?name=RD&background=fff7ed&color=9a3412',
+                    champsIds: ['naam','adres','geboortedatum','rijksregisternummer','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Meneer Dubois, 64 ans, gepensioneerd à Tongeren. Veuf. Crédit chez Cofidis. Fort accent limbourgeois.",
+                    situationProInstructie: SIT.gepensioneerd,
+                    humeurInstructie: "Tu es sarcastique avec humour. Si le conseiller fait plusieurs erreurs de néerlandais, tu peux dire 'Spreekt u eigenlijk wel Nederlands?' ou 'Ik denk dat u nog wat moet oefenen' avec un sourire dans la voix.",
+                },
+                {
+                    nom: 'Mevrouw Truyen', role: 'Gepensioneerde · Hasselt',
+                    age: '61 ans', situation: 'Mariée', ville: 'Hasselt', beroep: 'Gepensioneerd',
+                    image: 'https://ui-avatars.com/api/?name=GT&background=fff7ed&color=9a3412',
+                    champsIds: ['naam','adres','geboortedatum','burgerlijke_staat','beroep_type','maandinkomen','identiteitskaart','bewijs_inkomen'],
+                    prompt: "Mevrouw Truyen, 61 ans, gepensioneerde à Hasselt. Mariée. Crédit chez Cofidis. Fort accent limbourgeois.",
+                    situationProInstructie: SIT.gepensioneerd,
+                    humeurInstructie: "Tu peux soupirer et utiliser 'amai' ou 'gut' (expressions limbourgeois). Si l'appel dure trop, tu demandes 'Zijn we bijna klaar?' d'un ton légèrement impatient.",
+                },
+            ],
         },
         {
-            niveau: 10, nom: 'Mevrouw Vandenberghe', role: 'Zelfstandige · Brugge',
-            age: '36 ans', situation: 'Mariée, 2 enfants', ville: 'Brugge', beroep: 'Zelfstandige',
+            niveau: 10,
             voiceId: 'qMfbtjrTDTlGtBy52G6E',
             voiceSettings: { stability: 0.40, similarity_boost: 0.80, style: 0.45, use_speaker_boost: true },
-            image: 'https://ui-avatars.com/api/?name=LV&background=f0fdf4&color=14532d',
-            desc: "Très rapide. West-flandrien fort. Expressions locales. Le défi ultime.",
-            champsIds: ['naam','adres','rijksregisternummer','kredietbedrag','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
-            prompt: "Mevrouw Vandenberghe, 36 ans, zelfstandige (design) à Bruges. Mariée, 2 enfants. Demande de crédit chez Cofidis. Parle très vite avec un fort accent west-flamand et des expressions locales ('da', 'ge'). Répond très brièvement mais répond toujours à toutes les questions.",
-            situationProInstructie: SIT.zelfstandige,
+            desc: "⚠️ BOSS FINAL. Sèche, sarcastique. Peut proposer de parler français.",
+            comportementInstructie: "NIVEAU 10 — BOSS FINAL : Ton glacial, réponses minimales. Question mal posée → 'Wat?' sec. Silence trop long → 'Hallo? Bent u er nog?' Répétition → 'Dat heb ik al gezegd.' agacé. Jamais de chaleur.",
+            variants: [
+                {
+                    nom: 'Mevrouw Vandenberghe', role: 'Zelfstandige · Brugge',
+                    age: '36 ans', situation: 'Mariée, 2 enfants', ville: 'Brugge', beroep: 'Zelfstandige',
+                    image: 'https://ui-avatars.com/api/?name=LV&background=f0fdf4&color=14532d',
+                    champsIds: ['naam','adres','rijksregisternummer','kredietbedrag','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Mevrouw Vandenberghe, 36 ans, zelfstandige (design) à Bruges. Mariée, 2 enfants. Crédit chez Cofidis. Très vite, fort accent west-flamand, sèche.",
+                    situationProInstructie: SIT.zelfstandige,
+                    humeurInstructie: "Tu es la boss finale — froide et impatiente. Si le conseiller fait plusieurs erreurs de néerlandais ou hésite beaucoup, tu dis froidement 'Als u wilt kan ik ook Frans spreken, hoor.' (ton sarcastique). Jamais de 'Goed zo' ni de chaleur.",
+                },
+                {
+                    nom: 'Meneer Vermeersch', role: 'Zelfstandige · Gent',
+                    age: '44 ans', situation: 'Marié', ville: 'Gent', beroep: 'Zelfstandige',
+                    image: 'https://ui-avatars.com/api/?name=FV&background=f0fdf4&color=14532d',
+                    champsIds: ['naam','adres','geboortedatum','rijksregisternummer','kredietdoel','beroep_type','maandinkomen','bewijs_inkomen'],
+                    prompt: "Meneer Vermeersch, 44 ans, zelfstandige à Gent. Marié. Crédit chez Cofidis. Très vite, fort accent, condescendant.",
+                    situationProInstructie: SIT.zelfstandige,
+                    humeurInstructie: "Tu es le boss final masculin, sarcastique et condescendant. Si le conseiller hésite ou fait des erreurs : 'Spreekt u eigenlijk wel Nederlands?' ou 'Is dit uw eerste dag bij Cofidis?' Tu peux aussi dire 'Als u liever Frans spreekt, dat kan ook.' Sèche, minimal, impatient.",
+                },
+            ],
         },
     ];
+
+    // Construit PROFILES — variante aléatoire par niveau (retirée à chaque changement de niveau)
+    function pickProfile(levelIndex) {
+        const lc = LEVEL_CONFIGS[levelIndex];
+        const v  = lc.variants[Math.floor(Math.random() * lc.variants.length)];
+        return { ...lc, ...v, variants: undefined };
+    }
+
+    const PROFILES = LEVEL_CONFIGS.map((_, i) => pickProfile(i));
 
     // ==========================================
     // ACCUEIL — Prénom + Genre
@@ -467,7 +655,7 @@
                 div.innerHTML = `<span class="text-[8px] font-black text-slate-400 shrink-0 mt-0.5 w-3">${initiale}</span><span class="text-[10px] text-slate-700 bg-slate-100 rounded-xl px-2 py-1 leading-snug">${item.text}</span>`;
             } else {
                 div.className = 'flex items-start gap-1.5 justify-end';
-                div.innerHTML = `<span class="text-[10px] text-blue-800 bg-blue-50 rounded-xl px-2 py-1 leading-snug">${item.text}</span><span class="text-[8px] font-black text-blue-400 shrink-0 mt-0.5 w-3">C</span>`;
+                div.innerHTML = `<span class="client-msg text-[10px] text-blue-800 bg-blue-50 rounded-xl px-2 py-1 leading-snug${listenMode ? ' client-blurred' : ''}" onclick="revealOnClick(this)">${item.text}</span><span class="text-[8px] font-black text-blue-400 shrink-0 mt-0.5 w-3">C</span>`;
             }
             chatLogEl.appendChild(div);
         });
@@ -512,7 +700,7 @@
 
     levelSelector.onchange = (e) => {
         if (isCalling) location.reload();
-        current = PROFILES[e.target.value];
+        current = pickProfile(parseInt(e.target.value));
         updateUI();
     };
 
@@ -572,7 +760,7 @@
                 ws.send(JSON.stringify({ type: 'config', ...current, sampleRate: audioCtx.sampleRate, userName, userGender }));
                 document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 animate-pulse";
                 document.getElementById('status-text').innerText = "En ligne";
-                document.getElementById('state-msg').innerText = "Appel en cours…";
+                document.getElementById('state-msg').innerText = "Sonnerie… ☎️";
                 callIcon.setAttribute('data-lucide', 'phone-off');
                 callIcon.classList.replace('text-green-500', 'text-red-500');
                 liveContainer.classList.add('active');
@@ -592,6 +780,17 @@
                 // Champs sélectionnés → construire la checklist et l'aide
                 if (data.type === 'fields_selected') {
                     buildChecklist(data.champs);
+                }
+
+                // Décroché initial du client
+                if (data.type === 'client_greeting') {
+                    clientResponse.innerText = data.value;
+                    clientResponse.classList.toggle('client-blurred', listenMode);
+                    clientResponse.classList.toggle('client-reveal', !listenMode);
+                    addToLog('client', data.value);
+                    document.getElementById('state-msg').innerText = "Présentez-vous en néerlandais…";
+                    liveSpeech.innerText = "🎧 Le client décroche… présentez-vous !";
+                    liveSpeech.className = "text-sm font-bold text-emerald-600 italic animate-pulse";
                 }
 
                 if (data.type === 'interim_text') {
@@ -620,6 +819,8 @@
                     document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-green-500 animate-pulse";
                     document.getElementById('status-text').innerText = "En écoute";
                     clientResponse.innerText = data.value;
+                    clientResponse.classList.toggle('client-blurred', listenMode);
+                    clientResponse.classList.toggle('client-reveal', !listenMode);
                     addToLog('client', data.value);
 
                     // Progression
@@ -691,16 +892,75 @@
 
     function showGameOverModal(data) {
         playVictorySound();
-        if (userName) document.getElementById('debrief-title').innerText = `Bravo ${userName} !`;
+        if (userName) document.getElementById('debrief-title').innerText = `Bravo ${userName} ! 🎉`;
         document.getElementById('modal-debrief').classList.replace('hidden', 'flex');
-        if (data.debrief) {
-            document.getElementById('debrief-body').innerHTML = `
-                <p><b>🎯 Bilan :</b> ${data.debrief.diagnostic}</p>
-                <p class="text-green-600 font-bold mt-2">✅ Point fort : ${data.debrief.point_fort}</p>
-                <p class="text-red-500 font-bold mt-2">❌ À travailler : ${data.debrief.a_corriger}</p>
-                <p class="text-blue-600 font-bold mt-2 bg-blue-50 p-3 rounded-lg">📝 Phrase modèle : <span class="italic">${data.debrief.phrase_modele}</span></p>
-            `;
+
+        const d = data.debrief;
+        if (!d) {
+            document.getElementById('debrief-body').innerHTML = `<p class="text-slate-400 italic text-center py-4">Analyse indisponible.</p>`;
+            return;
         }
+
+        const section = (emoji, titre, couleur, contenu) =>
+            `<div class="rounded-xl p-4 ${couleur}">
+                <p class="text-[9px] font-black uppercase tracking-widest mb-2 opacity-60">${emoji} ${titre}</p>
+                ${contenu}
+            </div>`;
+
+        const listItems = (arr, fn) => arr && arr.length
+            ? `<ul class="space-y-1.5">${arr.map(fn).join('')}</ul>`
+            : `<p class="italic opacity-50">Aucune erreur relevée 👍</p>`;
+
+        let html = '';
+
+        // Encouragement
+        if (d.encouragement) html += section('💬', 'Encouragement', 'bg-emerald-50',
+            `<p class="text-emerald-800 font-semibold">${d.encouragement}</p>`);
+
+        // Points forts
+        if (d.points_forts?.length) html += section('✅', 'Points forts', 'bg-green-50',
+            `<ul class="space-y-1">${d.points_forts.map(p =>
+                `<li class="flex gap-2"><span class="text-green-500 shrink-0">✓</span><span class="text-green-800 font-semibold">${p}</span></li>`
+            ).join('')}</ul>`);
+
+        // Grammaire
+        html += section('📝', 'Grammaire', 'bg-orange-50',
+            listItems(d.grammaire, g =>
+                `<li class="bg-white rounded-lg p-2.5 border border-orange-100">
+                    <p class="text-red-500 line-through text-[10px]">${g.erreur}</p>
+                    <p class="text-green-600 font-black text-[11px] mt-0.5">→ ${g.correction}</p>
+                    <p class="text-slate-500 text-[10px] mt-0.5 italic">${g.explication}</p>
+                </li>`
+            ));
+
+        // Conjugaison
+        html += section('🔤', 'Conjugaison', 'bg-purple-50',
+            listItems(d.conjugaison, c =>
+                `<li class="bg-white rounded-lg p-2.5 border border-purple-100">
+                    <p class="text-red-500 line-through text-[10px]">${c.erreur}</p>
+                    <p class="text-green-600 font-black text-[11px] mt-0.5">→ ${c.correction}</p>
+                    <p class="text-slate-500 text-[10px] mt-0.5 italic">${c.explication}</p>
+                </li>`
+            ));
+
+        // Vocabulaire
+        if (d.vocabulaire?.length) html += section('📚', 'Vocabulaire à retenir', 'bg-blue-50',
+            `<ul class="space-y-1.5">${d.vocabulaire.map(v =>
+                `<li class="bg-white rounded-lg p-2.5 border border-blue-100">
+                    <p class="font-black text-blue-700 text-[12px]">${v.mot_nl} <span class="text-slate-400 font-normal text-[10px]">— ${v.traduction}</span></p>
+                    <p class="text-slate-500 text-[10px] italic mt-0.5">${v.exemple}</p>
+                </li>`
+            ).join('')}</ul>`);
+
+        // Prononciation
+        if (d.prononciation) html += section('🗣️', 'Accent & Prononciation', 'bg-yellow-50',
+            `<p class="text-yellow-900">${d.prononciation}</p>`);
+
+        // Phrase modèle
+        if (d.phrase_modele) html += section('💡', 'Phrase modèle', 'bg-slate-100',
+            `<p class="text-blue-700 font-black text-[13px] italic">"${d.phrase_modele}"</p>`);
+
+        document.getElementById('debrief-body').innerHTML = html;
     }
 
     // ==========================================
@@ -856,6 +1116,58 @@
         identiteitskaart:    'Demande une copie recto verso → puis adresse e-mail',
         bewijs_inkomen:      'Demande le justificatif de revenu → puis adresse e-mail',
     };
+
+    // ==========================================
+    // MODE ÉCOUTE — flouter le texte client
+    // ==========================================
+    let listenMode = false;
+
+    function toggleListenMode() {
+        listenMode = !listenMode;
+        applyListenMode();
+        const icon  = document.getElementById('listen-icon');
+        const label = document.getElementById('listen-label');
+        const btn   = document.getElementById('btn-listen-mode');
+        if (listenMode) {
+            icon.setAttribute('data-lucide', 'eye-off');
+            label.textContent = 'Afficher';
+            btn.classList.replace('bg-slate-200', 'bg-blue-600');
+            btn.classList.replace('text-slate-500', 'text-white');
+            btn.classList.remove('hover:bg-blue-100','hover:text-blue-600');
+        } else {
+            icon.setAttribute('data-lucide', 'eye');
+            label.textContent = 'Masquer';
+            btn.classList.replace('bg-blue-600', 'bg-slate-200');
+            btn.classList.replace('text-white', 'text-slate-500');
+            btn.classList.add('hover:bg-blue-100','hover:text-blue-600');
+        }
+        lucide.createIcons();
+    }
+
+    function applyListenMode() {
+        // Zone réponse principale
+        const cr = document.getElementById('client-response');
+        cr.classList.toggle('client-blurred', listenMode);
+        cr.classList.toggle('client-reveal',  !listenMode);
+        // Chat log — flouter les bulles côté client
+        document.querySelectorAll('#chat-log .client-msg').forEach(el => {
+            el.classList.toggle('client-blurred', listenMode);
+        });
+    }
+
+    // Clic sur le texte flouté → révèle temporairement
+    function revealOnClick(el) {
+        if (!listenMode) return;
+        el.classList.remove('client-blurred');
+        el.classList.add('client-reveal');
+        clearTimeout(el._revealTimer);
+        el._revealTimer = setTimeout(() => {
+            if (listenMode) {
+                el.classList.add('client-blurred');
+                el.classList.remove('client-reveal');
+            }
+        }, 3000);
+    }
 
     let hintVisible = true;
     function toggleHint() {
